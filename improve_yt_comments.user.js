@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name           Improved YouTube Comments
-// @namespace      http://robarr.co.uk/
+// @namespace      https://github.com/RichardBarrell/snippets
 // @description    Makes YouTube comments better
 // @include        http://www.youtube.com/*
 // @version        0.0.1
