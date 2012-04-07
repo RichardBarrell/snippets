@@ -4,6 +4,11 @@ module RC4 where
 -- RC4, abusing the C FFI a lot. The `main` routine assumes that the first
 -- 256 bytes of stdin are the key and everything following that is plaintext.
 
+-- Caveat: my reason for writing this was to play around with raw
+-- memory primitives for fun, not for security. I haven't even checked
+-- whether or not it implements RC4 correctly. It might even have a
+-- segfault bug. Don't use it in production.
+
 -- Compile with: ghc -O2 --make RC4.hs -main-is RC4.main
 
 import Foreign
