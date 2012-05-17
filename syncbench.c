@@ -1,3 +1,11 @@
+/* compile with: gcc syncbench.c -o syncbench -lrt -Wall -Wextra -Werror
+   run as:
+ ./syncbench filename 1024 100 'd' # to test fdatasync()
+ ./syncbench filename 1024 100 's' # to test fsync()
+
+   to perform 100 repetitions of writing 1024-byte chunks.
+*/
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
