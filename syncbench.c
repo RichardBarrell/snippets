@@ -88,6 +88,7 @@ int main(int argc, char **argv) {
 	}
 	char *c = d ? "fdatasync" : "fsync";
 	printf("Performed %d %s()s in %f seconds.\n", no_of_writes, c, t1 - t0);
-	printf("That's %f calls/second.\n", (t1-t0)/no_of_writes);
+	double rate = no_of_writes/(t1-t0);
+	printf("That's %f calls/second, or %f seconds/call.\n", rate, 1/rate);
 	return 0;
 }
