@@ -7,9 +7,9 @@
 #include <string.h>
 
 int main(int argc, char **argv) {
-	int howmuch = 1 << 20;
+	long howmuch = 1 << 20;
 	if (argc >= 2) {
-		howmuch = atoi(argv[1]);
+		howmuch = atol(argv[1]);
 		if (howmuch<1) {
 			fprintf(stderr, "At least one byte please.\n");
 			return 1;
@@ -19,7 +19,7 @@ int main(int argc, char **argv) {
 	if (tibet == NULL) {
 		fprintf(stderr, "Oh no that didn't malloc.\n");
 	}
-	int i;
+	long i;
 	for (i=0;i<howmuch;++i) {
 		tibet[i] = howmuch & 0xFF;
 	}
