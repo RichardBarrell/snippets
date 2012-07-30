@@ -1,6 +1,6 @@
 # grammar for parsing
 
-# e -> e0 '$'
+# e -> e0 '#'
 
 # e0 -> e1 (('+'|'-') e1)*
 # e1 -> e2 (('*'|'/'|'%') e2)*
@@ -41,7 +41,7 @@ def calc(expr):
         return "".join(h)
 
     x = [c for c in expr if not c.isspace()]
-    x.append('$')
+    x.append('#')
     x = "".join(x)
 
     p = [0]
@@ -62,7 +62,7 @@ def calc(expr):
 
     def e():
         v = e0()
-        require(peek() == '$')
+        require(peek() == '#')
         return v
 
     def e0():
