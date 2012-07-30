@@ -1,26 +1,28 @@
-# ll-parser (recursive-descent)
-# e0 -> e1
-# e0 -> e1 + e0
-# e0 -> e1 - e0
-# e1 -> e2
-# e1 -> e2 * e1
-# e1 -> e2 / e1
-# e2 -> number
-# e2 -> function()
-# e2 -> function(l0)
-# e2 -> constant
-# e2 -> ( e0 )
+# grammar for parsing
+
+# e -> e0 '$'
+
+# e0 -> e1 (('+'|'-') e1)*
+# e1 -> e2 (('*'|'/'|'%') e2)*
+# e2 -> (('+','-')* e2)
+# e2 -> e3 ('**' e2)*
+# e3 == tn
+
+# tn -> number
+# tn -> function '(' ')'
+# tn -> function '(' l0 ')'
+# tn -> constant
+# tn -> '(' e0 ')'
 # l0 -> e0
-# l0 -> e0 , l0
+# l0 -> e0 ',' l0
 
 import math
 import random
 
 functions = dict([(name, getattr(math, name)) for name in
-                  "acos asin atan atan2 ceil cos cosh degrees exp fabs floor fmod frexp hypot ldexp log log10 modf radians sin sinh sqrt tan tanh".split(" ")])
+                  "acos asin atan atan2 ceil cos cosh degrees exp fabs floor fmod frexp hypot ldexp log log10 modf pow radians sin sinh sqrt tan tanh".split(" ")])
 functions['randint'] = random.randint
 functions['complex'] = complex
-functions['pow'] = lambda x, y: x ** y
 consts = dict(e=math.e, pi=math.pi, i=complex(0, 1), j=complex(0, 1))
 
 def calc(expr):
@@ -33,39 +35,80 @@ def calc(expr):
     def require(b):
         if not b:
             raise Exception("parse error, unexpected %r" % peek())
+    # peek() and nom() are now doing lexing instead of just characters
     def nom():
+        if peek() == '**':
+            p[0] = p[0] + 1
         p[0] = p[0] + 1
     def peek():
-        return x[p[0]]
+        c = x[p[0]]
+        if c == '*' and x[p[0]+1] == '*':
+            return '**'
+        return c
+
+    def e():
+        v = e0()
+        require(peek() == '$')
+        return v
 
     def e0():
         v = e1()
-        if peek() == '+':
+        while peek() in '+-':
+            o = peek()
             nom()
-            v2 = e0()
-            return v + v2
-        if peek() == '-':
-            nom()
-            v2 = e0()
-            return v - v2
+            v2 = e1()
+            if o == '+':
+                v = v + v2
+            else:
+                v = v - v2
         return v
 
     def e1():
         v = e2()
-        if peek() == '*':
+        while peek() in '*/%':
+            o = peek()
             nom()
-            v2 = e1()
-            return v * v2
-        if peek() == '/':
-            nom()
-            v2 = e1()
-            return v / v2
+            v2 = e2()
+            if o == '*':
+                v = v * v2
+            elif o == '/':
+                v = v / v2
+            else:
+                v = v % v2
         return v
 
     def e2():
+        z = 1
+        while peek() in "+-":
+            o = peek()
+            nom()
+            if o == '-':
+                z *= -1
+        # cheat, dropping out of the above while loop is
+        # equivalent to returning z*e2() in the grammar.
+        v = tn()
+        while peek() == '**':
+            nom()
+            v2 = e2()
+            v = v ** v2
+        return z*v
+
+    def tn():
+        tn_states = ('.e', '+-', '', '', 'e')
         if peek().isdigit():
             v = ''
-            while peek().isdigit() or peek() in '.e':
+            state = 0
+            while peek().isdigit() or (peek() in tn_states[state]):
+                if peek() == 'e':
+                    state = 1
+                # after eating e, single following char may be + or -.
+                elif state == 1:
+                    state = 2
+                elif peek() == '.':
+                    state = 3
+                # after eating ., single following char must be digit
+                elif state == 3:
+                    state = 4
                 v += peek()
                 nom()
             v = float(v)
@@ -102,4 +145,4 @@ def calc(expr):
             v.append(e0())
         return v
 
-    return e0()
+    return e()
