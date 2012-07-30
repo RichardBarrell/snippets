@@ -19,13 +19,27 @@
 import math
 import random
 
-functions = dict([(name, getattr(math, name)) for name in
+functions = dict([(name.upper(), getattr(math, name)) for name in
                   "acos asin atan atan2 ceil cos cosh degrees exp fabs floor fmod frexp hypot ldexp log log10 modf pow radians sin sinh sqrt tan tanh".split(" ")])
-functions['randint'] = random.randint
-functions['complex'] = complex
-consts = dict(e=math.e, pi=math.pi, i=complex(0, 1), j=complex(0, 1))
+functions['RANDINT'] = random.randint
+functions['COMPLEX'] = complex
+consts = dict(E=math.e, PI=math.pi, I=complex(0, 1), J=complex(0, 1))
+
+def sorted(it, *args, **kwargs):
+    l = list(it)
+    l.sort(*args, **kwargs)
+    return l
 
 def calc(expr):
+    if expr == "help":
+        h = ["Calculator. Numbers like 100, 100.0, 1e2, 1.0e2 all ",
+             "work. The operators +, -, *, /, %, ** are available. The ",
+             "constants available are: "]
+        h.append(", ".join(sorted(consts.iterkeys())))
+        h.append(". The functions available are: ")
+        h.append(", ".join(sorted(functions.iterkeys())))
+        return "".join(h)
+
     x = [c for c in expr if not c.isspace()]
     x.append('$')
     x = "".join(x)
@@ -118,6 +132,7 @@ def calc(expr):
             while peek().isalpha():
                 fn += peek()
                 nom()
+            fn = fn.upper()
             if fn in consts:
                 return consts[fn]
             require(peek() == '(')
@@ -128,7 +143,7 @@ def calc(expr):
                 v = l0()
                 require(peek() == ')')
             nom()
-            return functions[fn.lower()](*v)
+            return functions[fn](*v)
         if peek() == '(':
             nom()
             v = e0()
