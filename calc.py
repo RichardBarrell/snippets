@@ -32,10 +32,11 @@ def calc(expr):
         return x[p[0]]
 
     functions = dict([(name, getattr(math, name)) for name in
-                      "acos asin atan atan2 ceil cos cosh degrees exp fabs floor fmod frexp hypot ldexp log log10 modf pow radians sin sinh sqrt tan tanh".split(" ")])
-    functions.update(dict(random=random.random, randint=random.randint))
-
-    consts = dict(e=math.e, pi=math.pi)
+                      "acos asin atan atan2 ceil cos cosh degrees exp fabs floor fmod frexp hypot ldexp log log10 modf radians sin sinh sqrt tan tanh".split(" ")])
+    functions['randint'] = random.randint
+    functions['complex'] = complex
+    functions['pow'] = lambda x, y: x ** y
+    consts = dict(e=math.e, pi=math.pi, i=complex(0, 1), j=complex(0, 1))
 
     def e0():
         v = e1()
