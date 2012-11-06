@@ -113,23 +113,10 @@ static void heapsort(lle **startp) {
 		ptrs[ptr_index] = here;
 	}
 
-	/* printf("---\n"); */
-
-	/* size_t i; */
-	/* for (i=0; i < len; i++) { */
-	/* 	printf("ptrs[%.6zu]->data = %d\n", i, ptrs[i]->data); */
-	/* } */
-	/* printf("===\n"); */
-
 	/* Establish heap property here. */
 	for (ptr_index=0; ptr_index < len; ptr_index++) {
 		heap_bubble_up(ptr_index, ptrs);
 	}
-
-	/* for (i=0; i < len; i++) { */
-	/* 	printf("ptrs[%.6zu]->data = %d\n", i, ptrs[i]->data); */
-	/* } */
-	/* printf("zzz\n\n"); */
 
 	for (ptr_index=len; ptr_index > 0; ptr_index--) {
 		top = ptr_index - 1;
@@ -146,6 +133,8 @@ static void heapsort(lle **startp) {
 	ptrs[len-1]->next = NULL;
 
 	start = ptrs[0];
+
+	free(ptrs);
 
 	*startp = start;
 }
