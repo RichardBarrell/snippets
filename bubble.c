@@ -71,23 +71,27 @@ static void heap_bubble_up(size_t i, lle **ptrs) {
 }
 
 static void heap_sift_down(size_t u, size_t len, lle **ptrs) {
-	size_t l, r;
-	lle* swap;
+	size_t l, r, swapme;
+	lle *swap;
 
 	l = heap_lix(u);
-	if ((l < len) && (ptrs[l]->data > ptrs[u]->data)) {
-		swap = ptrs[u];
-		ptrs[u] = ptrs[l];
-		ptrs[l] = swap;
-		heap_sift_down(l, len, ptrs);
-	}
 	r = heap_rix(u);
-	if ((r < len) && (ptrs[r]->data > ptrs[u]->data)) {
-		swap = ptrs[u];
-		ptrs[u] = ptrs[r];
-		ptrs[r] = swap;
-		heap_sift_down(r, len, ptrs);
+
+	if ((l < len) && (ptrs[l]->data > ptrs[u]->data)) {
+		if ((r < len) && (ptrs[r]->data > ptrs[l]->data)) {
+			swapme = r;
+		} else {
+			swapme = l;
+		}
+	} else if ((r < len) && (ptrs[r]->data > ptrs[u]->data)) {
+		swapme = r;
+	} else {
+		return;
 	}
+	swap = ptrs[u];
+	ptrs[u] = ptrs[swapme];
+	ptrs[swapme] = swap;
+	heap_sift_down(swapme, len, ptrs);
 }
 
 static void heapsort(lle **startp) {
@@ -201,12 +205,10 @@ int main(int argc, char **argv) {
 	}
 
 	for (index = 0; index < sort_me; index++) {
-		/* allob[index].prev = &allob[index-1]; */
 		allob[index].next = &allob[index+1];
 		allob[index].data = rand();
 	}
 	allob[sort_me-1].next = NULL;
-	/* allob[0].prev = NULL; */
 
 	start = allob;
 
