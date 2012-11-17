@@ -156,22 +156,18 @@ static int heapsort(lle **startp) {
 }
 
 static void bubblesort(lle **startp) {
-	lle *start = *startp;
 	lle *here, *next;
 	int swapped;
 
 	lle **before;
 
-	if (start == NULL) {
+	if (*startp == NULL) {
 		return;
 	}
 
-	here = start;
-	next = here->next;
-
 	do {
 		swapped = 0;
-		for (here=start, before=&start; here && here->next; before=&here->next, here=here->next) {
+		for (before=startp, here=*before; here->next; before=&here->next, here=here->next) {
 			next = here->next;
 			if (here->data > next->data) {
 				here->next = next->next;
@@ -183,8 +179,6 @@ static void bubblesort(lle **startp) {
 			}
 		}
 	} while(swapped);
-
-	*startp = start;
 }
 
 #ifndef BU_MERGE_INITIAL_RUN_SIZE
