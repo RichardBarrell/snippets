@@ -357,7 +357,7 @@ int main(int argc, char **argv) {
 	int sort_rv;
 
 	if (argc != 3) {
-		DIE("Usage: ./bubble [0-9]+ [bh]\n");
+		DIE("Usage: ./bubble [0-9]+ [bhm]\n");
 	}
 	if (sscanf(argv[1], "%zu", &sort_me) != 1) {
 		DIE("Can't read arg as size_t.\n");
