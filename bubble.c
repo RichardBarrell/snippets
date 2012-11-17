@@ -390,7 +390,7 @@ int main(int argc, char **argv) {
 
 	for (index = 0; index < sort_me; index++) {
 		allob[index].next = &allob[index+1];
-		allob[index].data = rand(); /* (sort_me - index); /* rand(); */
+		allob[index].data = rand(); /* (sort_me - index); */
 	}
 	allob[sort_me-1].next = NULL;
 
