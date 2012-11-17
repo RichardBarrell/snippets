@@ -106,15 +106,14 @@ static void heap_sift_down(size_t u, size_t len, lle **ptrs) {
 }
 
 static int heapsort(lle **startp) {
-	lle *start = *startp;
 	lle **ptrs, *swap, *here;
 	size_t len, alloc, ptr_index, top;
 
-	if (start == NULL) {
+	if (*startp == NULL) {
 		return 0;
 	}
 
-	len = llen(start);
+	len = llen(*startp);
 	alloc = sizeof(lle*) * len;
 	if ((alloc / sizeof(lle*)) != len) {
 		return -1;
@@ -124,7 +123,7 @@ static int heapsort(lle **startp) {
 		return -2;
 	}
 
-	for (ptr_index=0, here=start; here; ptr_index++, here=here->next) {
+	for (ptr_index=0, here=*startp; here; ptr_index++, here=here->next) {
 		ptrs[ptr_index] = here;
 	}
 
@@ -147,11 +146,9 @@ static int heapsort(lle **startp) {
 	}
 	ptrs[len-1]->next = NULL;
 
-	start = ptrs[0];
-
+	*startp = ptrs[0];
 	free(ptrs);
 
-	*startp = start;
 	return 0;
 }
 
