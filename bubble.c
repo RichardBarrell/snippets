@@ -258,20 +258,18 @@ static void bottomupmergesort(lle** startp) {
 		for (;;) {
 			DEBUG("run\n");
 
+			/* The right-hand run will definitely be empty, so immediately
+			 * skip up to the next merge size. */
+			if (len - offset <= run_size) {
+				goto done_merging;
+			}
+
 			/* Advance right pointer run_size spaces up from left pointer. */
 			/* Afterwards, here_r will be at the start of the right-hand run
 			 * and before_r will point at the list pointer to *here_r. */
 			here_r = here_l;
 			before_r = before_l;
 			for (pos_m=0; pos_m<run_size; pos_m++) {
-				if (here_r == NULL) {
-					/* If this hits the end of the list, the left-hand run
-					 * must cover the whole tail of the list and there's no
-					 * right-hand run to merge in at this level.
-					 * Skip out to perform the next size of merge upwards. */
-					DEBUG("eh skip\n");
-					goto done_merging;
-				}
 				before_r = &here_r->next;
 				here_r = here_r->next;
 			}
