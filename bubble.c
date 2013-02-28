@@ -270,6 +270,8 @@ static void bottomupmergesort(lle** startp) {
 			here_r = here_l;
 			before_r = before_l;
 			for (pos_m=0; pos_m<run_size; pos_m++) {
+				/* Tried this, made no difference that I could measure: */
+				/* __builtin_prefetch(here_r->next); */
 				before_r = &here_r->next;
 				here_r = here_r->next;
 			}
