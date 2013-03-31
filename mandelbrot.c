@@ -26,13 +26,17 @@ int main(int argc, char **argv) {
             char *po = p + (3 * xi);
             float x = -2 + (dx * (float)xi);
 
-            complex float z = 0;
+            complex float z = 0.0f;
             complex float c = x + y * I;
             unsigned char n = 0;
 
-            while (cabs(z) < 2.0f) {
+            float zx=0.0f, zy=0.0f;
+
+            while ((zx*zx + zy*zy) < 4.0f) {
                 z = z*z + c;
                 if (++n == 255) { break; }
+                zx = creal(z);
+                zy = cimag(z);
             }
 
             po[0] = 255 - n;
