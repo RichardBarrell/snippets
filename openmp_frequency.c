@@ -1,17 +1,24 @@
 /* compile: gcc -fopenmp -Wall -std=c99 openmp_frequency.c -lrt -lm -O3 -o openmp_frequency */
-/* usage ./openmp_frequency [y|n] [no of tests] [work factor per test] */
+/* usage ./openmp_frequency [y|n|p] [no of tests] [work factor per test] */
 /* performs busywork many times, prints how long iterations take */
 /* with y, uses OpenMP */
-/* with n, skips OpenMP */
+/* with p, uses pthreads + pthread_barrier_wait() */
+/* with n, runs a single thread */
 
 /* Typical test session looks like: */
 /* gcc -fopenmp -Wall -std=c99 openmp_frequency.c -lrt -lm -O3 -o openmp_frequency */
 /* ./openmp_frequency n 1000000 100 */
 /* ./openmp_frequency y 1000000 100 */
+/* ./openmp_frequency p 1000000 100 */
 
 /* Busywork done here isn't enough to stress CPU, so OpenMP is expected */
 /* to be slower than non-OpenMP. What I'm trying to measure here is how */
 /* much overhead it actually has per parallel-for start-and-stop. */
+
+/* Amusingly, OpenMP with gcc 4.6.3 on my machine seems to go faster than */
+/* the manual pthread_barrier_wait() version. I should go find out why. */
+
+#define THREADS 8
 
 #define _GNU_SOURCE
 #include <time.h>
@@ -21,6 +28,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <math.h>
+#include <pthread.h>
 
 double clock_mono_us() {
 	struct timespec ts;
@@ -55,12 +63,77 @@ void run_single_test(long runs, long iters, double *times, uint64_t *gbg) {
     }
 }
 
+struct context {
+    long runs;
+    long iters;
+    uint64_t *gbg;
+    double *times;
+    int id;
+    pthread_barrier_t *barr_p;
+};
+
+struct context contexts[THREADS];
+
+void *run_pthread_inner(void *context_v) {
+    struct context *context = context_v;
+    long runs = context->runs;
+    long iters = context->iters;
+    long iter_share = iters / THREADS;
+    int id = context->id;
+    long iter_from = iter_share * id;
+    long iter_to = iter_from + iter_share;
+    double *times = context->times;
+    if (context->id == (THREADS-1)) {
+        iter_to = iters;
+    }
+    uint64_t *gbg = context->gbg;
+    pthread_barrier_t *barr_p = context->barr_p;
+    pthread_barrier_wait(barr_p);
+    double t0 = 0;
+    if (id == 0) {
+        t0 = clock_mono_us();
+    }
+    for (long run=0; run<runs; run++) {
+        for (long iter=iter_from; iter<iter_to; iter++) {
+            gbg[iter]++;
+        }
+        if (id == 0) {
+            double t1 = clock_mono_us();
+            times[run] = t1 - t0;
+            t0 = t1;
+        }
+        pthread_barrier_wait(barr_p);
+    }
+    return NULL;
+}
+
+void run_pthread_test(long runs, long iters, double *times, uint64_t *gbg) {
+    printf("Thread test: %ld runs of %ld iterations.\n", runs, iters);
+    pthread_barrier_t barr;
+    pthread_barrier_init(&barr, NULL, THREADS);
+    pthread_t threads[THREADS];
+    for (int i=0; i<THREADS; i++) {
+        contexts[i].runs = runs;
+        contexts[i].iters = iters;
+        contexts[i].times = times;
+        contexts[i].gbg = gbg;
+        contexts[i].id = i;
+        contexts[i].barr_p = &barr;
+        pthread_create(threads+i, NULL, run_pthread_inner, contexts+i);
+        if (errno) { abort(); } /* meh, error handling */
+    }
+    for (int i=0; i<THREADS; i++) {
+        pthread_join(threads[i], NULL);
+        if (errno) { abort(); } /* meh, error handling */
+    }
+}
+
 #define ALLOC_WITHOUT_OVERFLOW(p, n) do {               \
     size_t to_alloc = sizeof(*(p)) * (n);               \
     if ((to_alloc / (n)) != sizeof(*(p))) { p = NULL; } \
     else { p = malloc(to_alloc); } } while(0)
 
-int run_test(long runs, long iters, int with_openmp) {
+int run_test(long runs, long iters, int with_loop) {
     double *run_times;
     ALLOC_WITHOUT_OVERFLOW(run_times, runs);
     uint64_t *iter_bits;
@@ -80,10 +153,16 @@ int run_test(long runs, long iters, int with_openmp) {
         iter_bits[iter] = iter & 0xFFFF;
     }
 
-    if (with_openmp) {
-        run_openmp_test(runs, iters, run_times, iter_bits);
-    } else {
+    switch (with_loop) {
+    case 0:
         run_single_test(runs, iters, run_times, iter_bits);
+        break;
+    case 1:
+        run_openmp_test(runs, iters, run_times, iter_bits);
+        break;
+    case 2:
+        run_pthread_test(runs, iters, run_times, iter_bits);
+        break;
     }
 
     uint64_t ac = 0;
@@ -118,7 +197,7 @@ int run_test(long runs, long iters, int with_openmp) {
     }
 
     printf("Garbage sum: %lu.\n", (unsigned long)ac);
-    printf("(garbage should be equal between OpenMP and single-thread runs)\n");
+    printf("(garbage should be equal between different loop types)\n");
     printf("times: mean %fus, std_dev %fus.\n", mean, std_dev);
     printf("times: min %fus, max %fus.\n", bot, top);
 
@@ -150,7 +229,7 @@ int run_test(long runs, long iters, int with_openmp) {
 int main(int argc, char **argv) {
     long runs = 5;
     long iters = 1024;
-    int with_openmp = 0;
+    int with_loop = 0;
     int fail = 0;
     if (argc > 4) {
         printf("%d is too many arguments.\n", argc-1);
@@ -172,12 +251,14 @@ int main(int argc, char **argv) {
 
     }
     if (argc > 1) {
-        if (strcmp(argv[1], "y") == 0) {
-            with_openmp = 1;
+        if (strcmp(argv[1], "p") == 0) {
+            with_loop = 2;
+        } else if (strcmp(argv[1], "y") == 0) {
+            with_loop = 1;
         } else if (strcmp(argv[1], "n") == 0) {
-            with_openmp = 0;
+            with_loop = 0;
         } else {
-            printf("%s is neither 'y' nor 'n'.\n", argv[1]);
+            printf("%s is not in 'y', 'n', 'p'.\n", argv[1]);
             fail = 1;
         }
     }
@@ -185,5 +266,5 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Usage: openmp_frequency [y|n] [5] [1024]\n");
         return 1;
     }
-    return run_test(runs, iters, with_openmp);
+    return run_test(runs, iters, with_loop);
 }
