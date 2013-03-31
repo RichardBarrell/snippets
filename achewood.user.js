@@ -2,7 +2,7 @@
 // @name           Achewood Lazy
 // @namespace      https://github.com/RichardBarrell/snippets
 // @description    Keyboard nav for Achewood
-// @include        http://achewood.com/*
+// @include        http://www.achewood.com/*
 // @version        0.0.1
 // ==/UserScript==
 
