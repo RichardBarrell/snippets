@@ -2,7 +2,7 @@
 /* gcc -o rev26 -O3 rev26.c -lpthread -Wall -DUSE_A_POSIX_BARRIER */
 /* or: */
 /* gcc -o rev26 -O3 rev26.c -lpthread -Wall -DUSE_A_SPIN_BARRIER */
-/* or: */
+/* or maybe even: */
 /* gcc -o rev26 -O3 rev26.c -lpthread -Wall -DUSE_A_SPIN_BARRIER -DGO_FASTER_DAMMIT */
 
 /* To run, run as: */
@@ -54,19 +54,17 @@ __attribute__((noinline))
 void paws() {
     #ifdef USE_A_POSIX_BARRIER
     pthread_barrier_wait(&barr);
-    #else
+    #else /* USE_A_SPIN_BARRIER  */
     int *vi = &pretend_i_am_a_barrier;
     if (__sync_bool_compare_and_swap(vi, 0, 1)) {
         while (!__sync_bool_compare_and_swap(vi, 2, 0)) {
             ;
         }
-        return;
     } else {
         while (!__sync_bool_compare_and_swap(vi, 1, 2)) {
             ;
         }
     }
-    __sync_synchronize();
     #endif
 }
 
@@ -115,7 +113,7 @@ int main(int arc, char **argv) {
     int n = 1;
     #ifdef USE_A_POSIX_BARRIER
     if (pthread_barrier_init(&barr, NULL, 2)) { abort(); }
-    #else
+    #else /* USE_A_SPIN_BARRIER  */
     pretend_i_am_a_barrier = 0;
     #endif
     pthread_t pair[2];
@@ -129,7 +127,7 @@ int main(int arc, char **argv) {
     }
     #ifdef USE_A_POSIX_BARRIER
     pthread_barrier_destroy(&barr);
-    #else
+    #else /* USE_A_SPIN_BARRIER  */
     #endif
     return 0;
 }
