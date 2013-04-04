@@ -70,11 +70,13 @@ void paws() {
     #endif
 }
 
+#define NO_OF_ITERATIONS (100*1000*1000)
+
 static void *links(void *context) {
     int i;
 	int a, b;
     int nots = 0;
-    for (i=0; i<(100*1000*1000); i++) {
+    for (i=0; i<NO_OF_ITERATIONS; i++) {
         paws();
 		*x = 0;
 		*y = 0;
@@ -98,7 +100,7 @@ static void *links(void *context) {
 
 static void *recht(void *context) {
     int i;
-    for (i=0; i<(1024*1024*1024); i++) {
+    for (i=0; i<NO_OF_ITERATIONS; i++) {
         paws();
         paws();
         *y = 2;
