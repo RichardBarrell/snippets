@@ -75,7 +75,6 @@ static void *links(void *context) {
 	int a, b;
     int nots = 0;
     for (i=0; i<NO_OF_ITERATIONS; i++) {
-        paws();
 		*x = 0;
 		*y = 0;
         paws();
@@ -99,7 +98,6 @@ static void *links(void *context) {
 static void *recht(void *context) {
     int i;
     for (i=0; i<NO_OF_ITERATIONS; i++) {
-        paws();
         paws();
         *y = 2;
         *x = 2;
