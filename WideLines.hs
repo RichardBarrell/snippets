@@ -1,4 +1,7 @@
 module Main where
+-- Cut wide lines at 120 (or whatever length) chars.
+-- ghc --make WideLines
+-- ./foo | ./WideLines 80
 
 import System.Environment (getArgs)
 
