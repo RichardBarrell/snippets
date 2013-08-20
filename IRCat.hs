@@ -7,17 +7,17 @@ module Main where
 import Data.List
 import System.IO
 import Network
-import Char
+import Data.Char
 import Control.Concurrent
 import Control.Concurrent.Chan
 import System.Environment
 import System.Exit
 
 main = withSocketsDo $ do
-   args <- getArgs
-   handle <- connectTo (args !! 0) (PortNumber $ fromInteger $ read $ args !! 1)
+   [hostname, port, logfile] <- getArgs
+   handle <- connectTo hostname (PortNumber . toEnum . read $ port)
    logchan <- newChan
-   loghandle <- openFile (args !! 2) AppendMode
+   loghandle <- openFile logfile AppendMode
    hSetBuffering handle LineBuffering
    hSetBuffering loghandle LineBuffering
    forkIO $ bouncy handle logchan
