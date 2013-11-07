@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html><head>
+<meta chatset="UTF-8" />
+<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1, maximum-scale=1, minimum-scale=1" />
+<title>Animation is Witchcraft</title>
+<style type="text/css">
+body {
+ margin: 0;
+}
+#wrapper, body {
+ width: 100%;
+ overflow: hidden;
+}
+#poppers {
+ position: relative;
+ top: 0;
+ left: 0;
+ overflow: visible;
+ -moz-animation-duration: 1s;
+ -moz-animation-timing-function: linear;
+ -webkit-animation-duration: 1s;
+ -webkit-animation-timing-function: linear;
+ animation-duration: 1s;
+ animation-timing-function: linear;
+}
+#poppers.going-left {
+ -moz-animation-name: poppers-going-left;
+ -webkit-animation-name: poppers-going-left;
+ animation-name: poppers-going-left;
+ left: 0%;
+}
+@-moz-keyframes poppers-going-left {
+ from {
+  left: -100%;
+ }
+ to {
+  left: 0%;
+ }
+}
+@-webkit-keyframes poppers-going-left {
+ from {
+  left: -100%;
+ }
+ to {
+  left: 0%;
+ }
+}
+@keyframes poppers-going-left {
+ from {
+  left: -100%;
+ }
+ to {
+  left: 0%;
+ }
+}
+#poppers.going-right {
+ -moz-animation-name: poppers-going-right;
+ -webkit-animation-name: poppers-going-right;
+ animation-name: poppers-going-right;
+ left: -100%;
+}
+@-moz-keyframes poppers-going-right {
+ from {
+  left: 0%;
+ }
+ to {
+  left: -100%;
+ }
+}
+@-webkit-keyframes poppers-going-right {
+ from {
+  left: 0%;
+ }
+ to {
+  left: -100%;
+ }
+}
+@keyframes poppers-going-right {
+ from {
+  left: 0%;
+ }
+ to {
+  left: -100%;
+ }
+}
+.pop-list {
+ list-style: none;
+ margin: 0;
+ padding: 0;
+}
+#pop-left {
+ background: #aff;
+ width: 100%;
+}
+#pop-right {
+ background: #aaf;
+ position: absolute;
+ top: 0;
+ left: 100%;
+ width: 100%;
+}
+#pop-right > section {
+ display: none;
+}
+#pop-1 {
+ background: #faf;
+}
+#pop-2 {
+ background: #ffa;
+}
+
+
+#tpers {
+ position: relative;
+ top: 0;
+ left: 0;
+ overflow: visible;
+ -moz-transition-property: left;
+ -moz-transition-duration: 1s;
+ -moz-transition-timing-function: linear;
+ -webkit-transition-property: left;
+ -webkit-transition-duration: 1s;
+ -webkit-transition-timing-function: linear;
+ transition-property: left;
+ transition-duration: 1s;
+ transition-timing-function: linear;
+}
+#tpers.going-left {
+ left: 0%;
+}
+#tpers.going-right {
+ left: -100%;
+}
+.t-list {
+ list-style: none;
+ margin: 0;
+ padding: 0;
+}
+#t-left {
+ background: #aff;
+ width: 100%;
+}
+#t-right {
+ background: #aaf;
+ position: absolute;
+ top: 0;
+ left: 100%;
+ width: 100%;
+}
+#t-right > section {
+ display: none;
+}
+#t-1 {
+ background: #faf;
+}
+#t-2 {
+ background: #ffa;
+}
+</style>
+</head><body>
+
+<div id="wrapper">
+	<h1>
+		CSS is Witchcraft
+	</h1>
+	<div class="slide-above" id="poppers">
+		<div id="pop-left">
+			<ul id="pop-list">
+				<li><a href="#!pop-1">Pop 1.</a></li>
+				<li><a href="#!pop-2">Pop 2.</a></li>
+			</ul>
+		</div>
+		<div id="pop-right">
+			<section id="pop-1">
+				<h2>Stuff happens in here.</h2>
+			</section>
+			<section id="pop-2">
+				<h2>Other things happen in here.</h2>
+			</section>
+		</div>
+	</div>
+
+	<div class="slide-above" id="tpers">
+		<div id="t-left">
+			<ul id="t-list">
+				<li><a href="#!t-1">Tea 1.</a></li>
+				<li><a href="#!t-2">Tea 2.</a></li>
+			</ul>
+		</div>
+		<div id="t-right">
+			<section id="t-1">
+				<h2>Tea happens in here.</h2>
+			</section>
+			<section id="t-2">
+				<h2>Other teas occur in here.</h2>
+			</section>
+		</div>
+	</div>
+</div>
+
+<script type="text/javascript">
+// <!--
+
+"use strict";
+function get_slide_top(node) {
+	while (!node.classList.contains("slide-above")) {
+		node = node.parentNode;
+		if (!node) { throw("Top not found."); }
+	}
+	return node;
+}
+Array.prototype.forEach.call(
+	document.querySelectorAll("#pop-list > li > a, #t-list > li > a"),
+	function(e,i,a) {
+		e.addEventListener("click", function(event) {
+			var popMeId = event.target.getAttribute("href").substr(2);
+			var popMe = document.getElementById(popMeId);
+			popMe.style.display = "block";
+			var top = get_slide_top(event.target);
+			top.classList.remove("going-left");
+			top.classList.add("going-right");
+		}, false);
+	}
+);
+Array.prototype.forEach.call(
+	document.querySelectorAll("#pop-right > section, #t-right > section"),
+	function(e,i,a) {
+		e.addEventListener("click", function(event) {
+			window.location.hash = '';
+			var top = get_slide_top(event.target);
+			top.classList.add("going-left");
+			top.classList.remove("going-right");
+		}, true);
+	}
+);
+		
+// -->
+</script>
+</body></html>
