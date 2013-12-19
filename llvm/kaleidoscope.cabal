@@ -1,0 +1,25 @@
+name:                kaleidoscope
+
+-- PVP summary:      +-+------- breaking API changes
+--                   | | +----- non-breaking API additions
+--                   | | | +--- code changes with no API change
+version:             0.1.0.0
+
+synopsis:            Following http://llvm.org/tutorial/ in Haskell
+license:             BSD3
+license-file:        LICENSE
+author:              Richard Barrell
+maintainer:          rchrd@brrll.co.uk
+build-type:          Simple
+cabal-version:       >=1.8
+
+executable kaleidoscope
+  -- .hs or .lhs file containing the Main module.
+  -- main-is:             
+  
+  -- Modules included in this executable, other than Main.
+  -- other-modules:       
+  
+  -- Other library packages from which modules are imported.
+  build-depends:       base ==4.5.*
+  
