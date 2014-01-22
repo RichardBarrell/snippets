@@ -11,7 +11,7 @@
 var comic = document.querySelector("#thecomic > img");
 var heart = document.getElementById("hex");
 if (comic && heart) {
-    var s = document.createElement("span");
+    var s = document.createElement("div");
     s.appendChild(document.createTextNode(comic.title));
     heart.parentNode.insertBefore(s, heart);
     s.style.backgroundColor = '#eeeeaa';
