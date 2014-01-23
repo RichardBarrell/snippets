@@ -2,6 +2,7 @@
 // @name        a softer world ♥ title text
 // @namespace   https://github.com/RichardBarrell/snippets
 // @description Copies the comic title text on asofterworld to a spot where I can see it without mousing over.
+// @include     http://www.asofterworld.com/
 // @include     http://www.asofterworld.com/index.php*
 // @include     http://asofterworld.com/index.php*
 // @version     1.0
