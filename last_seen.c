@@ -102,9 +102,11 @@ void *per_client(void *arg)
 		} else {
 			if (value.dsize != 8) {
 				FAIL("gdbm_fetch j bad len %d", value.dsize);
+				free(value.dptr);
 				goto die;
 			}
 			memcpy(response+0, value.dptr, 8);
+			free(value.dptr);
 		}
 
 		buf[0] = 'w';
@@ -114,9 +116,11 @@ void *per_client(void *arg)
 		} else {
 			if (value.dsize != 8) {
 				FAIL("gdbm_fetch w bad len %d", value.dsize);
+				free(value.dptr);
 				goto die;
 			}
 			memcpy(response+8, value.dptr, 8);
+			free(value.dptr);
 		}
 		pthread_mutex_unlock(ctx->dblock);
 	} else if ((buf[0] == 'w') || (buf[0] == 'j')) {
