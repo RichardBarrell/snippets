@@ -124,7 +124,7 @@ void *per_client(void *arg)
 		value.dptr = (char *)&now;
 		value.dsize = sizeof(now);
 
-		pthread_mutex_lock(ctx->dblock);		
+		pthread_mutex_lock(ctx->dblock);
 		if (buf[0] == 'w') {
 			if (gdbm_store(ctx->db, key, value, GDBM_REPLACE)) {
 				FAIL("gdbm_store w");
