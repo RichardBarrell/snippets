@@ -172,6 +172,10 @@ int main(void)
 
 	int acc = socket(AF_INET, SOCK_STREAM, 0);
 	if (acc < 0) { FAIL("socket"); return 1; }
+        int one = 1;
+	if (setsockopt(acc, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one))) {
+		FAIL("setsockopt(SO_REUSEADDR"); return 1;
+	}
 	struct sockaddr_in bind_addr;
 	memset(&bind_addr, 0, sizeof(bind_addr));
 	bind_addr.sin_family = AF_INET;
