@@ -1,4 +1,4 @@
-/* This is a really surprising C program that I'm using as a TCP interface  */
+/* This is a really silly C program that I'm using as a TCP interface       */
 /* to gdbm for a really terrible program which I wrote, which happens to    */
 /* have sockets but no DB libraries, nor any real FFI.                      */
 
@@ -63,9 +63,9 @@ void *thread_joiner(void *arg)
 {
 	struct joincontext *j = (struct joincontext *)arg;
 	for (;;) {
-		if (sem_wait(&j->read)) { FAIL("sem_wait"); pthread_exit(0); }
+		if (sem_wait(&j->read)) { FAIL("sem_wait"); abort(); }
 		pthread_t joinme = j->joinme;
-		if (sem_post(&j->write)) { FAIL("sem_post"); pthread_exit(0); }
+		if (sem_post(&j->write)) { FAIL("sem_post"); abort(); }
 		pthread_join(joinme, NULL);
 	}
 	return NULL;
@@ -157,9 +157,9 @@ void *per_client(void *arg)
 	close(ctx->fd);
 
 	struct joincontext *j = ctx->j;
-	if (sem_wait(&j->write)) { FAIL("sem_wait"); pthread_exit(0); }
+	if (sem_wait(&j->write)) { FAIL("sem_wait"); abort(); }
 	j->joinme = pthread_self();
-	if (sem_post(&j->read)) { FAIL("sem_post"); pthread_exit(0); }
+	if (sem_post(&j->read)) { FAIL("sem_post"); abort(); }
 	free(ctx);
 	return NULL;
 }
