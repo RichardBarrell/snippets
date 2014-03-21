@@ -46,3 +46,16 @@ data Kexp
     | KeCall String 
     | KaVar String
     | KaBinExp Kop Ka
+
+data Kop
+    = KoAdd
+    | KoSub
+    | KoMul
+    | KoDiv
+
+op_to_kop '+' = Just KoAdd
+op_to_kop '-' = Just KoSub
+op_to_kop '*' = Just KoMul
+op_to_kop '/' = Just KoDiv
+op_to_kop _ = Nothing
+
