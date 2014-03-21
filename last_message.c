@@ -113,7 +113,7 @@ int main(int argc, char **argv)
 {
 	int dying = 0;
 
-	const char *db_filename = "last_message.sqlite";
+	const char *db_filename = "last_message.db";
 	if (argc > 2) { return print_usage(); }
 	if (argc == 2) {
 		if (strcmp(argv[1], "--help") == 0) { return print_usage(); }
