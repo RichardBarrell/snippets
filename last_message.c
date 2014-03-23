@@ -3,7 +3,9 @@
    with sockets but no storage or FFI. */
 
 /* to compile on Linux: */
-/* cc last_message.c -o last_message -Os -Wall -Wextra -std=c99 -lsqlite3 */
+/* cc last_message.c -o last_message -Os     */
+/*                   -Wall -Wextra -std=c99  */
+/*                   -lsqlite3 -lapr-1       */
 
 #define _POSIX_C_SOURCE 199309L
 #define _BSD_SOURCE
@@ -22,11 +24,17 @@
 #include <poll.h>
 #include <unistd.h>
 
+#include <apr-1/apr.h>
+#include <apr-1/apr_errno.h>
+#include <apr-1/apr_pools.h>
+#include <apr-1/apr_poll.h>
+
 #include <sqlite3.h>
 
 #define FAIL(...) do { fprintf(stderr, __VA_ARGS__); perror(" "); } while(0)
 
-int print_usage(void) {
+static int print_usage(void)
+{
 	fprintf(stderr, "Usage: last_message [foo.db]\n");
 	return 1;
 }
@@ -36,14 +44,7 @@ struct remove_ll {
 	struct remove_ll *next;
 };
 
-struct poll_context {
-	struct pollfd **p_fds;
-	size_t *p_nfds;
-	size_t have_fds;
-	struct remove_ll *to_remove;
-};
-
-void remove_client_fd(int fd, struct poll_context *c)
+static void remove_client_fd(int fd, struct poll_context *c)
 {
 	struct remove_ll *remove = malloc(sizeof(struct remove_ll));
 	remove->fd = fd;
@@ -51,7 +52,7 @@ void remove_client_fd(int fd, struct poll_context *c)
 	c->to_remove = remove;
 }
 
-void add_client_fd(int fd, struct poll_context *c)
+static void add_client_fd(int fd, struct poll_context *c)
 {
 	if (*c->p_nfds == c->have_fds) {
 		size_t new_sz = sizeof(struct pollfd) * c->have_fds * 2;
@@ -71,7 +72,7 @@ void add_client_fd(int fd, struct poll_context *c)
 	pollfd->revents = 0;
 }
 
-void cleanup_client_fds(struct poll_context *c)
+static void cleanup_client_fds(struct poll_context *c)
 {
 	struct pollfd *fds, *this_pollfd, *last_pollfd;
 	fds = *c->p_fds;
@@ -101,7 +102,7 @@ void cleanup_client_fds(struct poll_context *c)
 	}
 }
 
-void handle_client_fd(struct pollfd *pollfd, struct poll_context *c)
+static void handle_client_fd(struct pollfd *pollfd, struct poll_context *c)
 {
 	int fd = pollfd->fd;
 	send(fd, "hello\n", 7, 0);
@@ -109,8 +110,45 @@ void handle_client_fd(struct pollfd *pollfd, struct poll_context *c)
 	remove_client_fd(fd, c);
 }
 
-int main(int argc, char **argv)
+static void apr_fail(apr_status_t apr_err)
 {
+	char error_str[256];
+	memset(&error_str[0], 0, sizeof error_str);
+	apr_strerror(apr_err, &error_str[0], sizeof error_str);
+	error_str[255] = 0;
+	fputs(error_str, stderr);
+	fputc('\n', stderr);
+}
+
+static void apr_perhaps_fail(apr_status_t apr_err)
+{
+	if (apr_err != 0) {
+		apr_fail(apr_err);
+	}
+}
+
+int main(int argc, const char * const *argv, const char * const *env)
+{
+	apr_status_t apr_err;
+	if ((apr_err = apr_app_initialize(&argc, &argv, &env)) != 0) {
+		FAIL("apr_app_initialize()");
+		apr_fail(apr_err);
+		return 1;
+	}
+	atexit(&apr_terminate);
+	apr_pool_t *root_pool;
+	if ((apr_err = apr_pool_create(&root_pool, NULL)) != 0) {
+		FAIL("apr_pool_create()");
+		apr_fail(apr_err);
+		return 1;
+	}
+	apr_pollset_t *pollset;
+	if ((apr_err = apr_pollset_create(&pollset, 256, root_pool, 0)) != 0) {
+		FAIL("apr_pollset_create()");
+		apr_fail(apr_err);
+		return 1;
+	}
+
 	int dying = 0;
 
 	const char *db_filename = "last_message.db";
@@ -161,7 +199,6 @@ int main(int argc, char **argv)
 	ctx.to_remove = NULL;
 
 	for (;;) {
-		printf("%zd\n", nfds);
 		poll(fds, nfds, -1);
 		if (errno == EINTR) { continue; }
 		else if (errno) {
@@ -191,5 +228,8 @@ int main(int argc, char **argv)
 			db_filename, sqlite3_errmsg(sql));
 		return 1;
 	}
+
+	apr_pollset_destroy(pollset);
+
 	return dying;
 }
