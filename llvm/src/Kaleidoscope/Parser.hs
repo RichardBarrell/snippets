@@ -1,4 +1,4 @@
-module Parser where
+module Kaleidoscope.Parser where
 
 import Text.Parsec
 import Control.Applicative ((<$>), (<*>))
@@ -45,7 +45,7 @@ data Kexp
     | KeBin Kop Kexp Kexp
     | KeCall String 
     | KaVar String
-    | KaBinExp Kop Ka
+    | KaBinExp Kop Kexp
 
 data Kop
     = KoAdd
@@ -58,4 +58,3 @@ op_to_kop '-' = Just KoSub
 op_to_kop '*' = Just KoMul
 op_to_kop '/' = Just KoDiv
 op_to_kop _ = Nothing
-
