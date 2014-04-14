@@ -33,81 +33,14 @@
 
 #define FAIL(...) do { fprintf(stderr, __VA_ARGS__); perror(" "); } while(0)
 
+typedef struct per_client {
+	int dummy;
+} per_client;
+
 static int print_usage(void)
 {
 	fprintf(stderr, "Usage: last_message [foo.db]\n");
 	return 1;
-}
-
-struct remove_ll {
-	int fd;
-	struct remove_ll *next;
-};
-
-static void remove_client_fd(int fd, struct poll_context *c)
-{
-	struct remove_ll *remove = malloc(sizeof(struct remove_ll));
-	remove->fd = fd;
-	remove->next = c->to_remove;
-	c->to_remove = remove;
-}
-
-static void add_client_fd(int fd, struct poll_context *c)
-{
-	if (*c->p_nfds == c->have_fds) {
-		size_t new_sz = sizeof(struct pollfd) * c->have_fds * 2;
-		struct pollfd *new_fds = realloc(*c->p_fds, new_sz);
-		if (new_fds == NULL) {
-			FAIL("realloc()");
-			close(fd);
-			return;
-		}
-		c->have_fds *= 2;
-		*c->p_fds = new_fds;
-	}
-	struct pollfd *pollfd = *c->p_fds + *c->p_nfds;
-	(*c->p_nfds)++;
-	pollfd->fd = fd;
-	pollfd->events = POLLIN | POLLOUT | POLLERR | POLLHUP;
-	pollfd->revents = 0;
-}
-
-static void cleanup_client_fds(struct poll_context *c)
-{
-	struct pollfd *fds, *this_pollfd, *last_pollfd;
-	fds = *c->p_fds;
-
-	while (c->to_remove) {
-		last_pollfd = fds + (*c->p_nfds - 1);
-		struct remove_ll *removed = c->to_remove;
-		this_pollfd = NULL;
-		for (size_t i = 0; i < *c->p_nfds; i++) {
-			if (fds[i].fd == removed->fd) {
-				this_pollfd = &fds[i];
-				break;
-			}
-		}
-		if (this_pollfd == NULL) {
-			FAIL("tried to remove missing fd %d.\n", removed->fd);
-			abort();
-		}
-
-		if (this_pollfd != last_pollfd) {
-			memcpy(this_pollfd, last_pollfd, sizeof fds[0]);
-		}
-
-		c->to_remove = removed->next;
-		(*c->p_nfds)--;
-		free(removed);
-	}
-}
-
-static void handle_client_fd(struct pollfd *pollfd, struct poll_context *c)
-{
-	int fd = pollfd->fd;
-	send(fd, "hello\n", 7, 0);
-	close(fd);
-	remove_client_fd(fd, c);
 }
 
 static void apr_fail(apr_status_t apr_err)
@@ -120,44 +53,43 @@ static void apr_fail(apr_status_t apr_err)
 	fputc('\n', stderr);
 }
 
-static void apr_perhaps_fail(apr_status_t apr_err)
-{
-	if (apr_err != 0) {
-		apr_fail(apr_err);
-	}
-}
+/* static void apr_perhaps_fail(apr_status_t apr_err) */
+/* { */
+/* 	if (apr_err != 0) { */
+/* 		apr_fail(apr_err); */
+/* 	} */
+/* } */
+
+#define APR_DO_OR_DIE(call) do { \
+	apr_status_t err; \
+	err = (call); \
+	if (err) { \
+		FAIL("%s\n", #call); \
+		apr_fail(err); \
+		goto die; \
+	} \
+	} while(0)
 
 int main(int argc, const char * const *argv, const char * const *env)
 {
-	apr_status_t apr_err;
-	if ((apr_err = apr_app_initialize(&argc, &argv, &env)) != 0) {
-		FAIL("apr_app_initialize()");
-		apr_fail(apr_err);
-		return 1;
-	}
-	atexit(&apr_terminate);
-	apr_pool_t *root_pool;
-	if ((apr_err = apr_pool_create(&root_pool, NULL)) != 0) {
-		FAIL("apr_pool_create()");
-		apr_fail(apr_err);
-		return 1;
-	}
-	apr_pollset_t *pollset;
-	if ((apr_err = apr_pollset_create(&pollset, 256, root_pool, 0)) != 0) {
-		FAIL("apr_pollset_create()");
-		apr_fail(apr_err);
-		return 1;
-	}
-
-	int dying = 0;
-
 	const char *db_filename = "last_message.db";
+	int dying = 0;
+	sqlite3 *sql = NULL;
+
+	apr_socket_t *acc = NULL;
+	apr_pollset_t *apr_pollset = NULL;
+
+	APR_DO_OR_DIE(apr_app_initialize(&argc, &argv, &env));
+	atexit(&apr_terminate);
+
+	apr_pool_t *pool;
+	APR_DO_OR_DIE(apr_pool_create(&pool, NULL));
+
 	if (argc > 2) { return print_usage(); }
 	if (argc == 2) {
 		if (strcmp(argv[1], "--help") == 0) { return print_usage(); }
 		db_filename = argv[1];
 	}
-	sqlite3 *sql = NULL;
 	int err;
 	if ((err = sqlite3_open(db_filename, &sql)) != SQLITE_OK) {
 		fprintf(stderr, "Can't open DB (%s): %s.\n",
@@ -165,58 +97,70 @@ int main(int argc, const char * const *argv, const char * const *env)
 		return 1;
 	}
 
-	int accept_sock;
-	accept_sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (accept_sock == -1) { FAIL("socket()"); goto die; }
+	APR_DO_OR_DIE(apr_socket_create(&acc, APR_INET, SOCK_STREAM, 0, pool));
+	/* APR_DO_OR_DIE(apr_socket_opt_set(acc, APR_SO_REUSEADDR, 1)); */
+	apr_sockaddr_t *l_addr;
+	APR_DO_OR_DIE(apr_sockaddr_info_get(&l_addr, NULL, APR_INET, 1066, 0, pool));
+	APR_DO_OR_DIE(apr_socket_bind(acc, l_addr));
+	APR_DO_OR_DIE(apr_socket_listen(acc, 8));
 
-	const int one = 1;
-	/* Don't care if this fails. */
-	setsockopt(accept_sock, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+	apr_pollfd_t apr_accept_descr;
+	memset(&apr_accept_descr, 0, sizeof apr_accept_descr);
+	apr_accept_descr.p = pool;
+	apr_accept_descr.desc_type = APR_POLL_SOCKET;
+	apr_accept_descr.desc.s = acc;
+	apr_accept_descr.reqevents = APR_POLLIN;
+	apr_accept_descr.client_data = NULL;
 
-	struct sockaddr_in bind_to;
-	memset(&bind_to, 0, sizeof bind_to);
-	bind_to.sin_family = AF_INET;
-	bind_to.sin_port = htons(1066);
-	bind_to.sin_addr.s_addr = htonl(0); /* 0.0.0.0, please */
-	if (bind(accept_sock, (struct sockaddr *)&bind_to, sizeof bind_to)) {
-		FAIL("bind()"); goto die;
-	}
-	if (listen(accept_sock, 8)) {
-		FAIL("listen()"); goto die;
-	}
-
-	struct pollfd *fds = malloc(sizeof(struct pollfd));
-	size_t nfds = 1;
-
-	fds[0].fd = accept_sock;
-	fds[0].events = POLLIN;
-	fds[0].revents = 0;
-
-	struct poll_context ctx;
-	ctx.p_fds = &fds;
-	ctx.p_nfds = &nfds;
-	ctx.have_fds = 1;
-	ctx.to_remove = NULL;
+	APR_DO_OR_DIE(apr_pollset_create(&apr_pollset, 256, pool, 0));
+	APR_DO_OR_DIE(apr_pollset_add(apr_pollset, &apr_accept_descr));
 
 	for (;;) {
-		poll(fds, nfds, -1);
-		if (errno == EINTR) { continue; }
-		else if (errno) {
-			FAIL("poll()"); goto die;
-		}
-		for (size_t i = 0; i < nfds; i++) {
-			if ((fds[i].fd == accept_sock) &&
-			    (fds[i].revents & POLLIN)) {
-				int client = accept(accept_sock, NULL, NULL);
-				add_client_fd(client, &ctx);
-			} else if (fds[i].revents) {
-				handle_client_fd(&fds[i], &ctx);
+		apr_int32_t signalled_len;
+		const apr_pollfd_t *signalled;
+		apr_status_t apr_poll_err = apr_pollset_poll(apr_pollset, 0,
+							     &signalled_len,
+							     &signalled);
+		if (apr_poll_err == APR_EINTR) { continue; }
+		APR_DO_OR_DIE(apr_poll_err);
+
+		for (apr_int32_t i = 0; i < signalled_len; i++) {
+			const apr_pollfd_t *s = signalled + i;
+			/* this is the acc socket */
+			if (s->desc.s == acc) {
+				apr_socket_t *client = NULL;
+				apr_status_t apr_accept_err =
+					apr_socket_accept(&client, acc, pool);
+				if (apr_accept_err) {
+				}
+				struct per_client *ctx = malloc(sizeof ctx[0]);
+				if (ctx == NULL) {
+					apr_socket_close(client);
+					fprintf(stderr, "malloc fail!\n");
+					continue;
+				}
+				memset(ctx, 0, sizeof *ctx);
+				apr_pollfd_t client_d;
+				memset(&client_d, 0, sizeof client_d);
+				client_d.p = pool;
+				client_d.desc_type = APR_POLL_SOCKET;
+				client_d.desc.s = client;
+				client_d.reqevents = APR_POLLIN | APR_POLLOUT | APR_POLLERR | APR_POLLHUP;
+				client_d.client_data = ctx;
 			}
 		}
-		cleanup_client_fds(&ctx);
 	}
-
-	free(fds);
+	/* 	for (size_t i = 0; i < nfds; i++) { */
+	/* 		if ((fds[i].fd == accept_sock) && */
+	/* 		    (fds[i].revents & POLLIN)) { */
+	/* 			int client = accept(accept_sock, NULL, NULL); */
+	/* 			add_client_fd(client, &ctx); */
+	/* 		} else if (fds[i].revents) { */
+	/* 			/\* handle_client_fd(&fds[i], &ctx); *\/ */
+	/* 		} */
+	/* 	} */
+	/* 	cleanup_client_fds(&ctx); */
+	/* } */
 
 	if (0) {
 	die:
@@ -229,7 +173,8 @@ int main(int argc, const char * const *argv, const char * const *env)
 		return 1;
 	}
 
-	apr_pollset_destroy(pollset);
+	apr_pollset_destroy(apr_pollset);
+	apr_socket_close(acc);
 
 	return dying;
 }
