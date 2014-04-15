@@ -53,13 +53,6 @@ static void apr_fail(apr_status_t apr_err)
 	fputc('\n', stderr);
 }
 
-/* static void apr_perhaps_fail(apr_status_t apr_err) */
-/* { */
-/* 	if (apr_err != 0) { */
-/* 		apr_fail(apr_err); */
-/* 	} */
-/* } */
-
 #define APR_DO_OR_DIE(call) do { \
 	apr_status_t err; \
 	err = (call); \
@@ -70,6 +63,15 @@ static void apr_fail(apr_status_t apr_err)
 	} \
 	} while(0)
 
+void do_client_state_machine(
+    const apr_pollfd_t *s,
+    apr_pollset_t *pollset)
+{
+	apr_pollset_remove(pollset, s);
+	apr_pollfd_t s1;
+	apr_pollset_add(pollset, &s1);
+}
+
 int main(int argc, const char * const *argv, const char * const *env)
 {
 	const char *db_filename = "last_message.db";
@@ -77,7 +79,7 @@ int main(int argc, const char * const *argv, const char * const *env)
 	sqlite3 *sql = NULL;
 
 	apr_socket_t *acc = NULL;
-	apr_pollset_t *apr_pollset = NULL;
+	apr_pollset_t *pollset = NULL;
 
 	APR_DO_OR_DIE(apr_app_initialize(&argc, &argv, &env));
 	atexit(&apr_terminate);
@@ -112,13 +114,13 @@ int main(int argc, const char * const *argv, const char * const *env)
 	apr_accept_descr.reqevents = APR_POLLIN;
 	apr_accept_descr.client_data = NULL;
 
-	APR_DO_OR_DIE(apr_pollset_create(&apr_pollset, 256, pool, 0));
-	APR_DO_OR_DIE(apr_pollset_add(apr_pollset, &apr_accept_descr));
+	APR_DO_OR_DIE(apr_pollset_create(&pollset, 256, pool, 0));
+	APR_DO_OR_DIE(apr_pollset_add(pollset, &apr_accept_descr));
 
 	for (;;) {
 		apr_int32_t signalled_len;
 		const apr_pollfd_t *signalled;
-		apr_status_t apr_poll_err = apr_pollset_poll(apr_pollset, 0,
+		apr_status_t apr_poll_err = apr_pollset_poll(pollset, 0,
 							     &signalled_len,
 							     &signalled);
 		if (apr_poll_err == APR_EINTR) { continue; }
@@ -147,6 +149,15 @@ int main(int argc, const char * const *argv, const char * const *env)
 				client_d.desc.s = client;
 				client_d.reqevents = APR_POLLIN | APR_POLLOUT | APR_POLLERR | APR_POLLHUP;
 				client_d.client_data = ctx;
+
+				apr_status_t err;
+				err = apr_pollset_add(pollset, &client_d);
+				if (err != 0) {
+					apr_fail(err);
+					apr_socket_close(client);
+				}
+			} else {
+				do_client_state_machine(s, pollset);
 			}
 		}
 	}
@@ -173,7 +184,7 @@ int main(int argc, const char * const *argv, const char * const *env)
 		return 1;
 	}
 
-	apr_pollset_destroy(apr_pollset);
+	apr_pollset_destroy(pollset);
 	apr_socket_close(acc);
 
 	return dying;
