@@ -31,11 +31,9 @@
 
 #include <sqlite3.h>
 
-#define FAIL(...) do { fprintf(stderr, __VA_ARGS__); perror(" "); } while(0)
+const char LM_SERVER_HI[4] = "L\x00\x00\n";
 
-typedef struct per_client {
-	int dummy;
-} per_client;
+#define FAIL(...) do { fprintf(stderr, __VA_ARGS__); perror(" "); } while(0)
 
 static int print_usage(void)
 {
@@ -53,6 +51,11 @@ static void apr_fail(apr_status_t apr_err)
 	fputc('\n', stderr);
 }
 
+static void apr_maybe_fail(apr_status_t apr_err) {
+	if (apr_err != 0)
+		apr_fail(apr_err);
+}
+
 #define APR_DO_OR_DIE(call) do { \
 	apr_status_t err; \
 	err = (call); \
@@ -63,13 +66,201 @@ static void apr_fail(apr_status_t apr_err)
 	} \
 	} while(0)
 
-void do_client_state_machine(
-    const apr_pollfd_t *s,
-    apr_pollset_t *pollset)
+size_t next_power_of_two(size_t v)
 {
-	apr_pollset_remove(pollset, s);
-	apr_pollfd_t s1;
-	apr_pollset_add(pollset, &s1);
+	size_t shift;
+
+	v--;
+	for (shift=1; shift<(8/2 * sizeof v); shift <<= 1) {
+		v |= v >> shift;
+	}
+	v++;
+
+	return v;
+}
+
+typedef struct {
+	char *buf;
+	size_t size, used;
+} byte_buffer;
+
+void byte_buffer_init(byte_buffer *b)
+{
+	b->buf = NULL;
+	b->size = 0;
+	b->used = 0;
+}
+
+int byte_buffer_grow_to(byte_buffer *b, size_t desired_size)
+{
+	if (desired_size <= b->size) {
+		return 0;
+	}
+	size_t new_size = next_power_of_two(desired_size);
+
+	if ((desired_size > 0) && (new_size == 0))
+		return -1;
+
+	char *new_buf = realloc(b->buf, new_size);
+	if (new_buf == NULL)
+		return -1;
+
+	b->buf = new_buf;
+	b->size = new_size;
+	return 0;
+}
+
+int byte_buffer_grow(byte_buffer *b, size_t more)
+{
+	return byte_buffer_grow_to(b, b->used + more);
+}
+
+void byte_buffer_free(byte_buffer *b)
+{
+	if (b->buf)
+		b->buf = NULL;
+	b->size = 0;
+	b->used = 0;
+}
+
+typedef enum per_client_state {
+	LM_S_INIT_CLIENT,
+	LM_S_SEND_HI,
+	LM_S_GET_QUERY,
+	LM_S_SEND_REPLY,
+	LM_S_CLOSING,
+} per_client_state;
+
+typedef struct per_client {
+	per_client_state state;
+	apr_size_t hi_bytes_sent;
+	byte_buffer query;
+	sqlite3 *sql;
+} per_client;
+
+void do_client_state_machine(const apr_pollfd_t *s, apr_pollset_t *pollset)
+{
+	struct per_client *c = s->client_data;
+	apr_socket_t *client = s->desc.s;
+	per_client_state old_state = c->state, new_state;
+	apr_int16_t old_reqevents = s->reqevents, new_reqevents;
+
+	switch (old_state) {
+	case LM_S_INIT_CLIENT: {
+		new_state = LM_S_SEND_HI;
+		new_reqevents = APR_POLLOUT | APR_POLLHUP | APR_POLLERR;
+		c->hi_bytes_sent = 0;
+		break;
+	}
+	case LM_S_SEND_HI: {
+		apr_size_t send_sz = (sizeof LM_SERVER_HI) - c->hi_bytes_sent;
+		apr_status_t send_err;
+		send_err = apr_socket_send(client, LM_SERVER_HI, &send_sz);
+		if (send_err && !(APR_STATUS_IS_EAGAIN(send_err))) {
+			apr_fail(send_err);
+			new_state = LM_S_CLOSING;
+			break;
+		}
+		c->hi_bytes_sent += send_sz;
+		if (c->hi_bytes_sent == (sizeof LM_SERVER_HI)) {
+			new_state = LM_S_GET_QUERY;
+			new_reqevents = APR_POLLIN | APR_POLLHUP | APR_POLLERR;
+			byte_buffer_init(&c->query);
+		} else {
+			new_state = LM_S_GET_QUERY;
+		}
+		break;
+	}
+	case LM_S_GET_QUERY: {
+		byte_buffer *q = &c->query;
+		apr_status_t recv_err;
+		size_t bigger = q->size + 64;
+		if (q->used > bigger) {
+			if (byte_buffer_grow_to(&c->query, bigger)) {
+				FAIL("can't grow a buffer\n");
+				byte_buffer_free(&c->query);
+				new_state = LM_S_CLOSING;
+				break;
+			}
+		}
+		char *put_bytes_here = q->buf + q->used;
+		apr_size_t bytes_read = q->size - q->used;
+		recv_err = apr_socket_recv(client, put_bytes_here, &bytes_read);
+		q->used += bytes_read;
+		if (memchr(q->buf, '\x00', q->used)) {
+			new_state = LM_S_SEND_REPLY;
+			break;
+		} else {
+			new_state = LM_S_GET_QUERY;
+		}
+		break;
+	}
+	case LM_S_SEND_REPLY: {
+		return;
+		break;
+	}
+	default: {
+		return;
+		break;
+	}
+	}
+
+	if (new_state == LM_S_CLOSING) {
+		apr_pollset_remove(pollset, s);
+		apr_socket_close(s->desc.s);
+	} else if (old_reqevents != new_reqevents) {
+		apr_pollfd_t s1;
+		memset(&s1, 0, sizeof s1);
+		s1.p = s->p;
+		s1.client_data = s->client_data;
+		s1.desc_type = s->desc_type;
+		s1.desc.s = s->desc.s;
+		s1.reqevents = new_reqevents;
+
+		apr_pollset_remove(pollset, s);
+		apr_pollset_add(pollset, &s1);
+	}
+}
+
+void do_client_accept(
+ apr_socket_t *acc,
+ apr_pollset_t *pollset,
+ apr_pool_t *pool,
+ sqlite3 *sql)
+{
+	apr_socket_t *client = NULL;
+	apr_status_t acc_err = apr_socket_accept(&client, acc, pool);
+	if (acc_err) {
+		apr_fail(acc_err);
+		return;
+	}
+
+	apr_status_t opt_err = apr_socket_opt_set(client, APR_SO_NONBLOCK, 1);
+	if (opt_err) {
+		apr_fail(opt_err);
+		apr_maybe_fail(apr_socket_close(client));
+		return;
+	}
+
+	struct per_client *ctx = malloc(sizeof *ctx);
+	if (ctx == NULL) {
+		apr_maybe_fail(apr_socket_close(client));
+		FAIL("can't malloc ctx!\n");
+		return;
+	}
+
+	ctx->state = LM_S_INIT_CLIENT;
+	ctx->sql = sql;
+
+	apr_pollfd_t fake_s;
+	memset(&fake_s, 0, sizeof fake_s);
+	fake_s.p = pool;
+	fake_s.desc_type = APR_POLL_SOCKET;
+	fake_s.desc.s = client;
+	fake_s.reqevents = 0;
+	fake_s.client_data = ctx;
+
+	do_client_state_machine(&fake_s, pollset);
 }
 
 int main(int argc, const char * const *argv, const char * const *env)
@@ -106,72 +297,36 @@ int main(int argc, const char * const *argv, const char * const *env)
 	APR_DO_OR_DIE(apr_socket_bind(acc, l_addr));
 	APR_DO_OR_DIE(apr_socket_listen(acc, 8));
 
-	apr_pollfd_t apr_accept_descr;
-	memset(&apr_accept_descr, 0, sizeof apr_accept_descr);
-	apr_accept_descr.p = pool;
-	apr_accept_descr.desc_type = APR_POLL_SOCKET;
-	apr_accept_descr.desc.s = acc;
-	apr_accept_descr.reqevents = APR_POLLIN;
-	apr_accept_descr.client_data = NULL;
+	apr_pollfd_t apr_accept_desc;
+	memset(&apr_accept_desc, 0, sizeof apr_accept_desc);
+	apr_accept_desc.p = pool;
+	apr_accept_desc.desc_type = APR_POLL_SOCKET;
+	apr_accept_desc.desc.s = acc;
+	apr_accept_desc.reqevents = APR_POLLIN;
+	apr_accept_desc.client_data = NULL;
 
 	APR_DO_OR_DIE(apr_pollset_create(&pollset, 256, pool, 0));
-	APR_DO_OR_DIE(apr_pollset_add(pollset, &apr_accept_descr));
+	APR_DO_OR_DIE(apr_pollset_add(pollset, &apr_accept_desc));
 
 	for (;;) {
 		apr_int32_t signalled_len;
 		const apr_pollfd_t *signalled;
-		apr_status_t apr_poll_err = apr_pollset_poll(pollset, 0,
+		apr_status_t poll_err = apr_pollset_poll(pollset, 0,
 							     &signalled_len,
 							     &signalled);
-		if (apr_poll_err == APR_EINTR) { continue; }
-		APR_DO_OR_DIE(apr_poll_err);
+		if (poll_err == APR_EINTR) { continue; }
+		APR_DO_OR_DIE(poll_err);
 
 		for (apr_int32_t i = 0; i < signalled_len; i++) {
 			const apr_pollfd_t *s = signalled + i;
 			/* this is the acc socket */
 			if (s->desc.s == acc) {
-				apr_socket_t *client = NULL;
-				apr_status_t apr_accept_err =
-					apr_socket_accept(&client, acc, pool);
-				if (apr_accept_err) {
-				}
-				struct per_client *ctx = malloc(sizeof ctx[0]);
-				if (ctx == NULL) {
-					apr_socket_close(client);
-					fprintf(stderr, "malloc fail!\n");
-					continue;
-				}
-				memset(ctx, 0, sizeof *ctx);
-				apr_pollfd_t client_d;
-				memset(&client_d, 0, sizeof client_d);
-				client_d.p = pool;
-				client_d.desc_type = APR_POLL_SOCKET;
-				client_d.desc.s = client;
-				client_d.reqevents = APR_POLLIN | APR_POLLOUT | APR_POLLERR | APR_POLLHUP;
-				client_d.client_data = ctx;
-
-				apr_status_t err;
-				err = apr_pollset_add(pollset, &client_d);
-				if (err != 0) {
-					apr_fail(err);
-					apr_socket_close(client);
-				}
+				do_client_accept(acc, pollset, pool, sql);
 			} else {
 				do_client_state_machine(s, pollset);
 			}
 		}
 	}
-	/* 	for (size_t i = 0; i < nfds; i++) { */
-	/* 		if ((fds[i].fd == accept_sock) && */
-	/* 		    (fds[i].revents & POLLIN)) { */
-	/* 			int client = accept(accept_sock, NULL, NULL); */
-	/* 			add_client_fd(client, &ctx); */
-	/* 		} else if (fds[i].revents) { */
-	/* 			/\* handle_client_fd(&fds[i], &ctx); *\/ */
-	/* 		} */
-	/* 	} */
-	/* 	cleanup_client_fds(&ctx); */
-	/* } */
 
 	if (0) {
 	die:
