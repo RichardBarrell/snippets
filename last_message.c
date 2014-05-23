@@ -60,7 +60,7 @@ static void apr_maybe_fail(apr_status_t apr_err) {
 	apr_status_t err; \
 	err = (call); \
 	if (err) { \
-		FAIL("%s\n", #call); \
+		FAIL("apr: %s\n", #call); \
 		apr_fail(err); \
 		goto die; \
 	} \
