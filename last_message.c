@@ -395,9 +395,9 @@ int main(int argc, const char * const *argv, const char * const *env)
 	for (;;) {
 		apr_int32_t signalled_len;
 		const apr_pollfd_t *signalled;
-		apr_status_t poll_err = apr_pollset_poll(pollset, 0,
-							     &signalled_len,
-							     &signalled);
+		apr_status_t poll_err = apr_pollset_poll(pollset, -1,
+							 &signalled_len,
+							 &signalled);
 		if (poll_err == APR_EINTR) { continue; }
 		APR_DO_OR_DIE(poll_err);
 
