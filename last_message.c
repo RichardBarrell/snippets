@@ -405,7 +405,7 @@ int main(int argc, const char * const *argv, const char * const *env)
 			const apr_pollfd_t *s = signalled + i;
 			/* this is the acc socket */
 			if (s->desc.s == acc) {
-				do_client_accept(acc, pollset, pool, sql);
+				do_client_accept(acc, pollset, pool, &lmdb);
 			} else {
 				do_client_state_machine(s, pollset);
 			}
