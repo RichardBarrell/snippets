@@ -123,6 +123,13 @@ void byte_buffer_free(byte_buffer *b)
 	b->used = 0;
 }
 
+typedef struct lmSQL {
+	sqlite3 *sql;
+	sqlite3_stmt *put;
+	sqlite3_stmt *get;
+	sqlite3_stmt *del;
+} lmSQL;
+
 typedef enum per_client_state {
 	LM_S_INIT_CLIENT,
 	LM_S_SEND_HI,
