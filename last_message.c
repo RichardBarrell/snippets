@@ -374,6 +374,40 @@ int main(int argc, const char * const *argv, const char * const *env)
 		return 1;
 	}
 
+	char *rc_msg;
+	const char *CREATE_MESSAGE_TABLES =
+		"CREATE TABLE IF NOT EXISTS messages ("
+		"  msgid INTEGER PRIMARY KEY NOT NULL,"
+		"  name BLOB NOT NULL,"
+		"  left INTEGER NOT NULL,"
+		"  delivered INTEGER,"
+		"  message BLOB NOT NULL"
+		");";
+	int rc = sqlite3_exec(sql, CREATE_MESSAGE_TABLES, NULL, NULL, &rc_msg);
+	if (rc != SQLITE_OK) {
+		FAIL("Can't create messages table: %s.\n", rc_msg);
+		sqlite3_close(sql);
+		return 1;
+	}
+
+	lmdb.sql = sql;
+
+#define LM_SQLITE_PREP(thing, statement) do { int prep = sqlite3_prepare_v2(sql, (statement), -1, (thing), NULL); if (prep != SQLITE_OK) { FAIL("SQL compilation error: (%s) while compiling (%s).\n", sqlite3_errmsg(sql), statement); goto die; } } while(0)
+
+	LM_SQLITE_PREP(&lmdb.put,
+		"INSERT INTO messages (name, left, message) "
+		"VALUES (?, ?, ?);"
+	);
+	LM_SQLITE_PREP(&lmdb.get,
+		"SELECT name, left, message "
+		"FROM messages "
+		"WHERE name = ? "
+		"ORDER BY msgid ASC;"
+	);
+	LM_SQLITE_PREP(&lmdb.del,
+		"DELETE FROM messages WHERE name = ?;"
+	);
+
 	APR_DO_OR_DIE(apr_socket_create(&acc, APR_INET, SOCK_STREAM, 0, pool));
 	/* APR_DO_OR_DIE(apr_socket_opt_set(acc, APR_SO_REUSEADDR, 1)); */
 	apr_sockaddr_t *l_addr;
@@ -416,6 +450,10 @@ int main(int argc, const char * const *argv, const char * const *env)
 	die:
 		dying = 1;
 	}
+
+	sqlite3_finalize(lmdb.put); lmdb.put = 0;
+	sqlite3_finalize(lmdb.get); lmdb.get = 0;
+	sqlite3_finalize(lmdb.del); lmdb.del = 0;
 
 	if (sqlite3_close(sql) != SQLITE_OK) {
 		fprintf(stderr, "Error closing DB (%s): %s.\n",
