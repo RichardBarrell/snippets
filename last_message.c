@@ -142,8 +142,68 @@ typedef struct per_client {
 	per_client_state state;
 	apr_size_t hi_bytes_sent;
 	byte_buffer query;
-	sqlite3 *sql;
+	byte_buffer reply;
+	lmSQL *lmdb;
 } per_client;
+
+typedef struct bytes {
+	char *start;
+	char *end;
+} bytes;
+
+int bytes_start_with(const char *needle, bytes haystack)
+{
+	size_t len = haystack.end - haystack.start;
+	if (len < strlen(needle)) { return 0; }
+	return (0 == strncmp(needle, haystack.start, strlen(needle)));
+}
+
+char *bytes_find_delimiter(char delimiter, bytes haystack)
+{
+	size_t len = haystack.end - haystack.start;
+	return memchr(haystack.start, delimiter, len);
+}
+
+static void stamp_INVALID(byte_buffer *reply)
+{
+	memcpy(reply->buf, "INVALID", strlen("INVALID"));
+}
+
+static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
+{
+	reply->used = 0;
+	if (byte_buffer_grow_to(reply, strlen("INVALID"))) {
+		FAIL("can't grow reply buffer");
+		return -1;
+	}
+
+	if (bytes_start_with("PUT ", query)) {
+		bytes name;
+		name.start = query.start + strlen("PUT ");
+		name.end = query.end;
+		name.end = bytes_find_delimiter(' ', name);
+		if ((name.end == NULL) || (name.end == name.start)) {
+			stamp_INVALID(reply);
+			return 0;
+		}
+		bytes message;
+		message.start = name.end + 1;
+		message.end = query.end;
+		if (message.end < message.start) {
+			FAIL("parsed past end of query!?\n");
+			abort();
+		}
+
+		abort(); // TODO
+	} else if (bytes_start_with("GET ", query)) {
+		abort(); // TODO
+	} else if (bytes_start_with("TAKE ", query)) {
+		abort(); // TODO
+	} else {
+		memcpy(reply->buf, "INVALID", strlen("INVALID"));
+		return 0;
+	}
+}
 
 void do_client_state_machine(const apr_pollfd_t *s, apr_pollset_t *pollset)
 {
@@ -157,6 +217,8 @@ void do_client_state_machine(const apr_pollfd_t *s, apr_pollset_t *pollset)
 		new_state = LM_S_SEND_HI;
 		new_reqevents = APR_POLLOUT | APR_POLLHUP | APR_POLLERR;
 		c->hi_bytes_sent = 0;
+		byte_buffer_init(&c->query);
+		byte_buffer_init(&c->reply);
 		break;
 	}
 	case LM_S_SEND_HI: {
@@ -172,7 +234,6 @@ void do_client_state_machine(const apr_pollfd_t *s, apr_pollset_t *pollset)
 		if (c->hi_bytes_sent == (sizeof LM_SERVER_HI)) {
 			new_state = LM_S_GET_QUERY;
 			new_reqevents = APR_POLLIN | APR_POLLHUP | APR_POLLERR;
-			byte_buffer_init(&c->query);
 		} else {
 			new_state = LM_S_GET_QUERY;
 		}
@@ -184,8 +245,7 @@ void do_client_state_machine(const apr_pollfd_t *s, apr_pollset_t *pollset)
 		size_t bigger = q->size + 64;
 		if (q->used > bigger) {
 			if (byte_buffer_grow_to(&c->query, bigger)) {
-				FAIL("can't grow a buffer\n");
-				byte_buffer_free(&c->query);
+				FAIL("can't grow receive buffer\n");
 				new_state = LM_S_CLOSING;
 				break;
 			}
@@ -193,21 +253,35 @@ void do_client_state_machine(const apr_pollfd_t *s, apr_pollset_t *pollset)
 		char *put_bytes_here = q->buf + q->used;
 		apr_size_t bytes_read = q->size - q->used;
 		recv_err = apr_socket_recv(client, put_bytes_here, &bytes_read);
-		q->used += bytes_read;
-		if (memchr(q->buf, '\x00', q->used)) {
-			new_state = LM_S_SEND_REPLY;
+		if (recv_err) {
+			abort(); // TODO
+		}
+		if (bytes_read == 0) {
+			new_state = LM_S_CLOSING;
 			break;
+		}
+		q->used += bytes_read;
+
+		char *null_here = memchr(q->buf, '\x00', q->used);
+		if (null_here) {
+			new_state = LM_S_SEND_REPLY;
+			q->used = null_here - q->buf;
+			bytes query_bytes;
+			query_bytes.start = c->query.buf;
+			query_bytes.end = null_here;
+			do_client_query(c->lmdb, query_bytes, &c->reply);
 		} else {
 			new_state = LM_S_GET_QUERY;
 		}
 		break;
 	}
 	case LM_S_SEND_REPLY: {
-		return;
+		abort(); // TODO
 		break;
 	}
 	default: {
-		return;
+		FAIL("Invalid client state.\n");
+		abort();
 		break;
 	}
 	}
@@ -215,6 +289,8 @@ void do_client_state_machine(const apr_pollfd_t *s, apr_pollset_t *pollset)
 	if (new_state == LM_S_CLOSING) {
 		apr_pollset_remove(pollset, s);
 		apr_socket_close(s->desc.s);
+		byte_buffer_free(&c->query);
+		byte_buffer_free(&c->reply);
 	} else if (old_reqevents != new_reqevents) {
 		apr_pollfd_t s1;
 		memset(&s1, 0, sizeof s1);
@@ -233,7 +309,7 @@ void do_client_accept(
  apr_socket_t *acc,
  apr_pollset_t *pollset,
  apr_pool_t *pool,
- sqlite3 *sql)
+ lmSQL *lmdb)
 {
 	apr_socket_t *client = NULL;
 	apr_status_t acc_err = apr_socket_accept(&client, acc, pool);
@@ -257,7 +333,7 @@ void do_client_accept(
 	}
 
 	ctx->state = LM_S_INIT_CLIENT;
-	ctx->sql = sql;
+	ctx->lmdb = lmdb;
 
 	apr_pollfd_t fake_s;
 	memset(&fake_s, 0, sizeof fake_s);
@@ -275,6 +351,7 @@ int main(int argc, const char * const *argv, const char * const *env)
 	const char *db_filename = "last_message.db";
 	int dying = 0;
 	sqlite3 *sql = NULL;
+	lmSQL lmdb = { 0, 0, 0, 0 };
 
 	apr_socket_t *acc = NULL;
 	apr_pollset_t *pollset = NULL;
