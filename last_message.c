@@ -117,8 +117,8 @@ int byte_buffer_grow(byte_buffer *b, size_t more)
 
 void byte_buffer_free(byte_buffer *b)
 {
-	if (b->buf)
-		b->buf = NULL;
+	free(b->buf);
+	b->buf = NULL;
 	b->size = 0;
 	b->used = 0;
 }
