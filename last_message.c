@@ -351,7 +351,7 @@ int main(int argc, const char * const *argv, const char * const *env)
 	const char *db_filename = "last_message.db";
 	int dying = 0;
 	sqlite3 *sql = NULL;
-	lmSQL lmdb = { 0, 0, 0, 0 };
+	lmSQL lmdb = { };
 
 	apr_socket_t *acc = NULL;
 	apr_pollset_t *pollset = NULL;
