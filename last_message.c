@@ -237,12 +237,15 @@ static void do_client_state_machine(
 	apr_socket_t *client = s->desc.s;
 	per_client_state old_state = c->state, new_state;
 	apr_int16_t old_reqevents = s->reqevents, new_reqevents;
+	apr_int16_t send_reqevents = APR_POLLOUT | APR_POLLHUP | APR_POLLERR;
+	apr_int16_t recv_reqevents = APR_POLLIN  | APR_POLLHUP | APR_POLLERR;
+	byte_buffer *q = &c->query;
 
 	switch (old_state) {
 	case LM_S_INIT_CLIENT: {
 		DEBUG("LM_S_INIT_CLIENT\n");
 		new_state = LM_S_SEND_HI;
-		new_reqevents = APR_POLLOUT | APR_POLLHUP | APR_POLLERR;
+		new_reqevents = send_reqevents;
 		c->bytes_sent = 0;
 		byte_buffer_init(&c->query);
 		byte_buffer_init(&c->reply);
@@ -261,16 +264,15 @@ static void do_client_state_machine(
 		c->bytes_sent += send_sz;
 		if (c->bytes_sent == (sizeof LM_SERVER_HI)) {
 			new_state = LM_S_GET_QUERY;
-			new_reqevents = APR_POLLIN | APR_POLLHUP | APR_POLLERR;
+			new_reqevents = recv_reqevents;
 		} else {
-			new_state = old_state;
-			new_reqevents = old_reqevents;
+			new_state = LM_S_SEND_HI;
+			new_reqevents = send_reqevents;
 		}
 		break;
 	}
 	case LM_S_GET_QUERY: {
 		DEBUG("LM_S_GET_QUERY\n");
-		byte_buffer *q = &c->query;
 		apr_status_t recv_err;
 		size_t bigger = q->used + 64;
 		if (q->size < bigger) {
@@ -285,21 +287,28 @@ static void do_client_state_machine(
 		DEBUG("put_bytes_here = %p\n", put_bytes_here);
 		recv_err = apr_socket_recv(client, put_bytes_here, &bytes_read);
 		DEBUG("recv %zu bytes, %d.\n", bytes_read, recv_err);
+		if ((bytes_read == 0) || (APR_STATUS_IS_EOF(recv_err))) {
+			if (q->used == 0) {
+				DEBUG("clean disconnect :)\n");
+			} else {
+				DEBUG("dirty disconnect :| (%zd)\n", q->used);
+			}
+			new_state = LM_S_CLOSING;
+			break;
+		}
 		if (recv_err) {
 			APR_FAIL(recv_err);
 			new_state = LM_S_CLOSING;
 			break;
 		}
-		if (bytes_read == 0) {
-			new_state = LM_S_CLOSING;
-			break;
-		}
 		q->used += bytes_read;
-		char *null_here = memchr(q->buf, '\x00', q->used);
+
+		char *null_here;
+		do_you_want_to_try_a_query:
+		null_here = memchr(q->buf, '\x00', q->used);
 		if (null_here) {
 			new_state = LM_S_SEND_REPLY;
-			new_reqevents = APR_POLLOUT | APR_POLLHUP | APR_POLLERR;
-			q->used = null_here - q->buf;
+			new_reqevents = send_reqevents;
 			bytes query_bytes;
 			query_bytes.start = c->query.buf;
 			query_bytes.end = null_here;
@@ -307,25 +316,26 @@ static void do_client_state_machine(
 				new_state = LM_S_CLOSING;
 				break;
 			}
+			/* How many bytes of the buffered input did that */
+			/* query occupy? Copy any leftovers back up to */
+			/* the beginning of the 'query' buffer. */
+			size_t q_consumed = 1 + null_here - c->query.buf;
+			q->used -= q_consumed;
+			if (q->used) {
+				memcpy(q->buf, 1 + null_here, q->used);
+			}
 			c->bytes_sent = 0;
-			q->used = 0;
 			if (c->reply.used == 0) {
-				new_state = old_state;
-				new_reqevents = old_reqevents;
+				goto do_you_want_to_try_a_query;
 			}
 		} else {
-			new_state = old_state;
-			new_reqevents = old_reqevents;
+			new_state = LM_S_GET_QUERY;
+			new_reqevents = recv_reqevents;
 		}
 		break;
 	}
 	case LM_S_SEND_REPLY: {
 		DEBUG("LM_S_SEND_REPLY\n");
-		if (c->bytes_sent == c->reply.used) {
-			new_state = LM_S_GET_QUERY;
-			new_reqevents = APR_POLLIN | APR_POLLHUP | APR_POLLERR;
-			break;
-		}
 		apr_size_t nbytes = c->reply.used - c->bytes_sent;
 		char *bytes = c->reply.buf + c->bytes_sent;
 		apr_status_t send_err = apr_socket_send(client, bytes, &nbytes);
@@ -336,11 +346,10 @@ static void do_client_state_machine(
 		}
 		c->bytes_sent += nbytes;
 		if (c->bytes_sent == c->reply.used) {
-			new_state = LM_S_GET_QUERY;
-			new_reqevents = APR_POLLIN | APR_POLLHUP | APR_POLLERR;
+			goto do_you_want_to_try_a_query;
 		} else {
-			new_state = old_state;
-			new_reqevents = old_reqevents;
+			new_state = LM_S_SEND_REPLY;
+			new_reqevents = send_reqevents;
 		}
 		break;
 	}
