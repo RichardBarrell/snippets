@@ -33,6 +33,7 @@
 #include <apr-1/apr_errno.h>
 #include <apr-1/apr_pools.h>
 #include <apr-1/apr_poll.h>
+#include <apr-1/apr_network_io.h>
 
 #include <sqlite3.h>
 
