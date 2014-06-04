@@ -24,8 +24,10 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <unistd.h>
+#include <time.h>
 
 #include <apr-1/apr.h>
+#include <apr-1/apr_signal.h>
 #include <apr-1/apr_errno.h>
 #include <apr-1/apr_pools.h>
 #include <apr-1/apr_poll.h>
@@ -87,6 +89,24 @@ static size_t next_power_of_two(size_t v)
 	v++;
 
 	return v;
+}
+
+typedef struct bytes {
+	const char *start;
+	const char *end;
+} bytes;
+
+static int bytes_start_with(const char *needle, bytes haystack)
+{
+	size_t len = haystack.end - haystack.start;
+	if (len < strlen(needle)) { return 0; }
+	return (0 == strncmp(needle, haystack.start, strlen(needle)));
+}
+
+static char *bytes_find_delimiter(char delimiter, bytes haystack)
+{
+	size_t len = haystack.end - haystack.start;
+	return memchr(haystack.start, delimiter, len);
 }
 
 typedef struct {
@@ -154,52 +174,53 @@ typedef struct per_client {
 	lmSQL *lmdb;
 } per_client;
 
-typedef struct bytes {
-	char *start;
-	char *end;
-} bytes;
-
-static int bytes_start_with(const char *needle, bytes haystack)
+static void stamp_S(byte_buffer *reply, const char *s)
 {
-	size_t len = haystack.end - haystack.start;
-	if (len < strlen(needle)) { return 0; }
-	return (0 == strncmp(needle, haystack.start, strlen(needle)));
+	memcpy(reply->buf, s, strlen(s) + 1);
+	reply->used = strlen(s) + 1;
 }
 
-static char *bytes_find_delimiter(char delimiter, bytes haystack)
+static int q_bytes_bind(sqlite3_stmt *s, int n, bytes b)
 {
-	size_t len = haystack.end - haystack.start;
-	return memchr(haystack.start, delimiter, len);
+	size_t l = b.end - b.start;
+	return sqlite3_bind_blob(s, n, b.start, l, SQLITE_TRANSIENT);
 }
 
-static void stamp_INVALID(byte_buffer *reply)
+static int q_now_bind(sqlite3_stmt *s, int n)
 {
-	memcpy(reply->buf, "INVALID", strlen("INVALID"));
+	time_t now = time(NULL);
+	return sqlite3_bind_int64(s, n, (sqlite3_int64)now);
 }
 
 static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
 {
 	reply->used = 0;
+	sqlite3_stmt *s;
 
 	DEBUG("do_client_query: %s\n", query.start);
 
-	size_t query_len = query.end - query.start;
-	if (byte_buffer_grow_to(reply, query_len + 1)) {
+	if (byte_buffer_grow_to(reply, strlen("INVALID") + 1)) {
 		FAIL("can't grow reply buffer");
 		return -1;
 	}
-	memcpy(reply->buf, query.start, query_len);
-	reply->buf[query_len] = 0;
-	reply->used = query_len + 1;
-	for (size_t i=0; i<query_len; i+= 2) {
-		reply->buf[i] = toupper(reply->buf[i]);
-	}
-	return 0;
 
-	if (byte_buffer_grow_to(reply, strlen("INVALID"))) {
-		FAIL("can't grow reply buffer");
-		return -1;
-	}
+#define LM_DB_DO(thing) do { \
+	if (SQLITE_OK != (thing)) {			   \
+		FAIL("DB error: %s\n", sqlite3_errmsg(lmdb->sql)); \
+		goto query_error; \
+	} } while(0)
+#define LM_DB_TC(s, n, t) do { int t_wanted = (t), \
+	t_found = sqlite3_column_type((s), (n)); \
+	if (t_wanted != t_found) { \
+		FAIL("Bad type. Wanted %d, got %d.\n", t_wanted, t_found); \
+		goto query_error; \
+	} } while(0)
+#define LM_DB_CC(s, n) do { int n_wanted = (n), \
+	n_found = sqlite3_column_count((s)); \
+	if (n_wanted != n_found) { \
+		FAIL("Bad width. Wanted %d, got %d.\n", n_wanted, n_found); \
+		goto query_error; \
+	} } while(0)
 
 	if (bytes_start_with("PUT ", query)) {
 		bytes name;
@@ -207,7 +228,7 @@ static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
 		name.end = query.end;
 		name.end = bytes_find_delimiter(' ', name);
 		if ((name.end == NULL) || (name.end == name.start)) {
-			stamp_INVALID(reply);
+			stamp_S(reply, "INVALID");
 			return 0;
 		}
 		bytes message;
@@ -218,15 +239,76 @@ static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
 			abort();
 		}
 
-		abort(); // TODO
+		s = lmdb->put;
+		LM_DB_DO(q_bytes_bind(s, 1, name));
+		LM_DB_DO(q_now_bind(s, 2));
+		LM_DB_DO(q_bytes_bind(s, 3, message));
+		if (sqlite3_step(s) != SQLITE_DONE) { LM_DB_DO(!SQLITE_OK); }
+		stamp_S(reply, "SAVED");
 	} else if (bytes_start_with("GET ", query)) {
-		abort(); // TODO
-	} else if (bytes_start_with("TAKE ", query)) {
-		abort(); // TODO
+		bytes name;
+		name.start = query.start + strlen("GET ");
+		name.end = query.end;
+
+		s = lmdb->get;
+		LM_DB_DO(q_bytes_bind(s, 1, name));
+
+		int e;
+
+		for (;;) {
+			e = sqlite3_step(s);
+			if (e == SQLITE_DONE) { break; }
+			if (e != SQLITE_ROW) { goto query_error; }
+			DEBUG("row\n");
+			LM_DB_CC(s, 3);
+			LM_DB_TC(s, 0, SQLITE_INTEGER);
+			LM_DB_TC(s, 1, SQLITE_INTEGER);
+			LM_DB_TC(s, 2, SQLITE_BLOB);
+			int64_t msgid;
+			time_t left;
+			bytes message;
+			msgid = sqlite3_column_int64(s, 0);
+			left = sqlite3_column_int(s, 1);
+			message.start = sqlite3_column_blob(s, 2);
+			message.end = message.start;
+			message.end += sqlite3_column_bytes(s, 2);
+
+			int line_len = snprintf(
+			    NULL,
+			    0,
+			    "%lld %lld %.*s",
+			    (long long int)left,
+			    (long long int)msgid,
+			    (int)(message.end - message.start),
+			    message.start);
+
+			byte_buffer_grow_to(reply, reply->used + line_len + 32);
+
+			reply->used += snprintf(
+			    reply->buf + reply->used,
+			    line_len + 32,
+			    "%d:%lld %lld %.*s,",
+			    line_len,
+			    (long long int)left,
+			    (long long int)msgid,
+			    (int)(message.end - message.start),
+			    message.start
+			);
+		}
+		byte_buffer_grow_to(reply, reply->used + 1);
+		reply->buf[reply->used] = 0;
+		reply->used++;
 	} else {
-		memcpy(reply->buf, "INVALID", strlen("INVALID"));
+		stamp_S(reply, "INVALID");
 		return 0;
 	}
+
+	if (0) {
+	query_error:
+		stamp_S(reply, "ERROR");
+	}
+	sqlite3_reset(s);
+	return 0;
 }
 
 static void do_client_state_machine(
@@ -427,6 +509,13 @@ static void do_client_accept(
 	do_client_state_machine(&fake_s, pollset);
 }
 
+static sig_atomic_t global_shutting_down = 0;
+
+static void shutdown_on_signal(int signum)
+{
+	global_shutting_down = signum;
+}
+
 int main(int argc, const char * const *argv, const char * const *env)
 {
 	const char *db_filename = "last_message.db";
@@ -491,7 +580,7 @@ int main(int argc, const char * const *argv, const char * const *env)
 		"VALUES (?, ?, ?);"
 	);
 	LM_SQLITE_PREP(&lmdb.get,
-		"SELECT name, left, message, msgid "
+		"SELECT msgid, left, message "
 		"FROM messages "
 		"WHERE name = ? "
 		"ORDER BY msgid ASC;"
@@ -532,15 +621,13 @@ int main(int argc, const char * const *argv, const char * const *env)
 	APR_DO_OR_DIE(apr_pollset_create(&pollset, 256, pool, 0));
 	APR_DO_OR_DIE(apr_pollset_add(pollset, &apr_accept_desc));
 
-	for (;;) {
-		apr_int32_t signalled_len;
-		const apr_pollfd_t *signalled;
-		apr_status_t poll_err = apr_pollset_poll(pollset, -1,
-							 &signalled_len,
-							 &signalled);
-		if (poll_err == APR_EINTR) { continue; }
-		APR_DO_OR_DIE(poll_err);
+	apr_signal(SIGTERM, shutdown_on_signal);
+	apr_signal(SIGINT, shutdown_on_signal);
 
+	apr_int32_t signalled_len = 0;
+	const apr_pollfd_t *signalled = NULL;
+	apr_status_t poll_err = 0;
+	for (;;) {
 		for (apr_int32_t i = 0; i < signalled_len; i++) {
 			const apr_pollfd_t *s = signalled + i;
 			if (s->desc.s == acc) {
@@ -550,6 +637,17 @@ int main(int argc, const char * const *argv, const char * const *env)
 				do_client_state_machine(s, pollset);
 			}
 		}
+		if (global_shutting_down) { goto goodnight; }
+		if (!APR_STATUS_IS_EINTR(poll_err)) { APR_DO_OR_DIE(poll_err); }
+		poll_err = apr_pollset_poll(
+		    pollset, -1,
+		    &signalled_len,
+		    &signalled);
+	}
+
+	if (0) {
+	goodnight:
+		fprintf(stderr, "Goodnight!\n");
 	}
 
 	if (0) {
