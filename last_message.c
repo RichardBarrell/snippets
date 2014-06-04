@@ -28,7 +28,7 @@
 
 #include <sqlite3.h>
 
-const char LM_SERVER_HI[4] = "L\x00\x00\n";
+const char LM_SERVER_HI[4] = "L00\x00"
 
 #define STDERR_HERE() fprintf(stderr, "%s %d ", __FILE__, __LINE__)
 #define FAIL(...) do { STDERR_HERE(); fprintf(stderr, __VA_ARGS__); perror(" "); } while(0)
