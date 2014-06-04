@@ -628,6 +628,8 @@ int main(int argc, const char * const *argv, const char * const *env)
 	const apr_pollfd_t *signalled = NULL;
 	apr_status_t poll_err = 0;
 	for (;;) {
+		if (global_shutting_down) { goto goodnight; }
+		if (!APR_STATUS_IS_EINTR(poll_err)) { APR_DO_OR_DIE(poll_err); }
 		for (apr_int32_t i = 0; i < signalled_len; i++) {
 			const apr_pollfd_t *s = signalled + i;
 			if (s->desc.s == acc) {
@@ -637,8 +639,6 @@ int main(int argc, const char * const *argv, const char * const *env)
 				do_client_state_machine(s, pollset);
 			}
 		}
-		if (global_shutting_down) { goto goodnight; }
-		if (!APR_STATUS_IS_EINTR(poll_err)) { APR_DO_OR_DIE(poll_err); }
 		poll_err = apr_pollset_poll(
 		    pollset, -1,
 		    &signalled_len,
