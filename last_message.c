@@ -3,9 +3,11 @@
    with sockets but no storage or FFI. */
 
 /* to compile on Linux: */
-/* cc last_message.c -o last_message -Os     */
+/* cc last_message.c -o last_message -Os -g  */
 /*                   -Wall -Wextra -std=c99  */
-/*                   -lsqlite3 -lapr-1       */
+/*                   -lsqlite3 -lapr-1 -lrt  */
+
+
 
 #define _POSIX_C_SOURCE 199309L
 #define _BSD_SOURCE
@@ -195,7 +197,7 @@ static int q_now_bind(sqlite3_stmt *s, int n)
 static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
 {
 	reply->used = 0;
-	sqlite3_stmt *s;
+	sqlite3_stmt *s = NULL;
 
 	DEBUG("do_client_query: %s\n", query.start);
 
@@ -253,6 +255,7 @@ static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
 		s = lmdb->get;
 		LM_DB_DO(q_bytes_bind(s, 1, name));
 
+		int64_t max_msgid = 0;
 		int e;
 
 		for (;;) {
@@ -294,10 +297,50 @@ static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
 			    (int)(message.end - message.start),
 			    message.start
 			);
+			max_msgid = msgid > max_msgid ? msgid : max_msgid;
 		}
 		byte_buffer_grow_to(reply, reply->used + 1);
 		reply->buf[reply->used] = 0;
 		reply->used++;
+
+		sqlite3_reset(s);
+		s = lmdb->seen_del;
+		LM_DB_DO(q_bytes_bind(s, 1, name));
+		if (sqlite3_step(s) != SQLITE_DONE) { LM_DB_DO(!SQLITE_OK); }
+		sqlite3_reset(s);
+
+		s = lmdb->seen_add;
+		LM_DB_DO(q_bytes_bind(s, 1, name));
+		LM_DB_DO(sqlite3_bind_int64(s, 2, max_msgid));
+		if (sqlite3_step(s) != SQLITE_DONE) { LM_DB_DO(!SQLITE_OK); }
+	} else if (bytes_start_with("SEEN ", query)) {
+		bytes name;
+		name.start = query.start + strlen("SEEN ");
+		name.end = query.end;
+		int64_t max_msgid = -1;
+
+		s = lmdb->seen_get;
+		LM_DB_DO(q_bytes_bind(s, 1, name));
+		for (;;) {
+			int e = sqlite3_step(s);
+			if (e == SQLITE_DONE) { break; }
+			if (e != SQLITE_ROW) { LM_DB_DO(!SQLITE_OK); }
+			LM_DB_CC(s, 1);
+			LM_DB_TC(s, 0, SQLITE_INTEGER);
+			int64_t msgid = sqlite3_column_int64(s, 0);
+			max_msgid = msgid > max_msgid ? msgid : max_msgid;
+		}
+		sqlite3_reset(s);
+
+		if (max_msgid == -1) {
+			stamp_S(reply, "OK");
+			return 0;
+		}
+		s = lmdb->drop;
+		LM_DB_DO(sqlite3_bind_int64(s, 1, max_msgid));
+		LM_DB_DO(q_bytes_bind(s, 2, name));
+		if (sqlite3_step(s) != SQLITE_DONE) { LM_DB_DO(!SQLITE_OK); }
+		stamp_S(reply, "OK");
 	} else {
 		stamp_S(reply, "INVALID");
 		return 0;
@@ -307,7 +350,7 @@ static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
 	query_error:
 		stamp_S(reply, "ERROR");
 	}
-	sqlite3_reset(s);
+	if (s) { sqlite3_reset(s); }
 	return 0;
 }
 
@@ -599,7 +642,7 @@ int main(int argc, const char * const *argv, const char * const *env)
 	);
 	LM_SQLITE_PREP(&lmdb.drop,
 		"DELETE FROM messages "
-		"WHERE msgid < ? "
+		"WHERE msgid <= ? "
 		"  AND name = ?;"
 	);
 
