@@ -181,13 +181,16 @@ static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
 {
 	reply->used = 0;
 
+	DEBUG("do_client_query: %s\n", query.start);
+
 	size_t query_len = query.end - query.start;
-	if (byte_buffer_grow_to(reply, query_len)) {
+	if (byte_buffer_grow_to(reply, query_len + 1)) {
 		FAIL("can't grow reply buffer");
 		return -1;
 	}
 	memcpy(reply->buf, query.start, query_len);
-	reply->used = query_len;
+	reply->buf[query_len] = 0;
+	reply->used = query_len + 1;
 	for (size_t i=0; i<query_len; i+= 2) {
 		reply->buf[i] = toupper(reply->buf[i]);
 	}
