@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -33,7 +34,14 @@
 
 const char LM_SERVER_HI[4] = "L\x00\x00\n";
 
-#define FAIL(...) do { fprintf(stderr, __VA_ARGS__); perror(" "); } while(0)
+#define STDERR_HERE() fprintf(stderr, "%s %d ", __FILE__, __LINE__)
+#define FAIL(...) do { STDERR_HERE(); fprintf(stderr, __VA_ARGS__); perror(" "); } while(0)
+
+#if 1
+#define DEBUG(...) do { STDERR_HERE(); fprintf(stderr, __VA_ARGS__); } while(0)
+#else
+#define DEBUG(...)
+#endif
 
 static int print_usage(void)
 {
@@ -51,6 +59,8 @@ static void apr_fail(apr_status_t apr_err)
 	fputc('\n', stderr);
 }
 
+#define APR_FAIL(e) do { STDERR_HERE(); apr_fail(e); } while(0)
+
 static void apr_maybe_fail(apr_status_t apr_err) {
 	if (apr_err != 0)
 		apr_fail(apr_err);
@@ -66,7 +76,7 @@ static void apr_maybe_fail(apr_status_t apr_err) {
 	} \
 	} while(0)
 
-size_t next_power_of_two(size_t v)
+static size_t next_power_of_two(size_t v)
 {
 	size_t shift;
 
@@ -84,14 +94,14 @@ typedef struct {
 	size_t size, used;
 } byte_buffer;
 
-void byte_buffer_init(byte_buffer *b)
+static void byte_buffer_init(byte_buffer *b)
 {
 	b->buf = NULL;
 	b->size = 0;
 	b->used = 0;
 }
 
-int byte_buffer_grow_to(byte_buffer *b, size_t desired_size)
+static int byte_buffer_grow_to(byte_buffer *b, size_t desired_size)
 {
 	if (desired_size <= b->size) {
 		return 0;
@@ -110,12 +120,7 @@ int byte_buffer_grow_to(byte_buffer *b, size_t desired_size)
 	return 0;
 }
 
-int byte_buffer_grow(byte_buffer *b, size_t more)
-{
-	return byte_buffer_grow_to(b, b->used + more);
-}
-
-void byte_buffer_free(byte_buffer *b)
+static void byte_buffer_free(byte_buffer *b)
 {
 	free(b->buf);
 	b->buf = NULL;
@@ -127,7 +132,10 @@ typedef struct lmSQL {
 	sqlite3 *sql;
 	sqlite3_stmt *put;
 	sqlite3_stmt *get;
-	sqlite3_stmt *del;
+	sqlite3_stmt *seen_add;
+	sqlite3_stmt *seen_del;
+	sqlite3_stmt *seen_get;
+	sqlite3_stmt *drop;
 } lmSQL;
 
 typedef enum per_client_state {
@@ -140,7 +148,7 @@ typedef enum per_client_state {
 
 typedef struct per_client {
 	per_client_state state;
-	apr_size_t hi_bytes_sent;
+	apr_size_t bytes_sent;
 	byte_buffer query;
 	byte_buffer reply;
 	lmSQL *lmdb;
@@ -151,14 +159,14 @@ typedef struct bytes {
 	char *end;
 } bytes;
 
-int bytes_start_with(const char *needle, bytes haystack)
+static int bytes_start_with(const char *needle, bytes haystack)
 {
 	size_t len = haystack.end - haystack.start;
 	if (len < strlen(needle)) { return 0; }
 	return (0 == strncmp(needle, haystack.start, strlen(needle)));
 }
 
-char *bytes_find_delimiter(char delimiter, bytes haystack)
+static char *bytes_find_delimiter(char delimiter, bytes haystack)
 {
 	size_t len = haystack.end - haystack.start;
 	return memchr(haystack.start, delimiter, len);
@@ -172,6 +180,19 @@ static void stamp_INVALID(byte_buffer *reply)
 static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
 {
 	reply->used = 0;
+
+	size_t query_len = query.end - query.start;
+	if (byte_buffer_grow_to(reply, query_len)) {
+		FAIL("can't grow reply buffer");
+		return -1;
+	}
+	memcpy(reply->buf, query.start, query_len);
+	reply->used = query_len;
+	for (size_t i=0; i<query_len; i+= 2) {
+		reply->buf[i] = toupper(reply->buf[i]);
+	}
+	return 0;
+
 	if (byte_buffer_grow_to(reply, strlen("INVALID"))) {
 		FAIL("can't grow reply buffer");
 		return -1;
@@ -205,7 +226,9 @@ static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
 	}
 }
 
-void do_client_state_machine(const apr_pollfd_t *s, apr_pollset_t *pollset)
+static void do_client_state_machine(
+ const apr_pollfd_t *s,
+ apr_pollset_t *pollset)
 {
 	struct per_client *c = s->client_data;
 	apr_socket_t *client = s->desc.s;
@@ -214,36 +237,40 @@ void do_client_state_machine(const apr_pollfd_t *s, apr_pollset_t *pollset)
 
 	switch (old_state) {
 	case LM_S_INIT_CLIENT: {
+		DEBUG("LM_S_INIT_CLIENT\n");
 		new_state = LM_S_SEND_HI;
 		new_reqevents = APR_POLLOUT | APR_POLLHUP | APR_POLLERR;
-		c->hi_bytes_sent = 0;
+		c->bytes_sent = 0;
 		byte_buffer_init(&c->query);
 		byte_buffer_init(&c->reply);
 		break;
 	}
 	case LM_S_SEND_HI: {
-		apr_size_t send_sz = (sizeof LM_SERVER_HI) - c->hi_bytes_sent;
+		DEBUG("LM_S_SEND_HI\n");
+		apr_size_t send_sz = (sizeof LM_SERVER_HI) - c->bytes_sent;
 		apr_status_t send_err;
 		send_err = apr_socket_send(client, LM_SERVER_HI, &send_sz);
 		if (send_err && !(APR_STATUS_IS_EAGAIN(send_err))) {
-			apr_fail(send_err);
+			APR_FAIL(send_err);
 			new_state = LM_S_CLOSING;
 			break;
 		}
-		c->hi_bytes_sent += send_sz;
-		if (c->hi_bytes_sent == (sizeof LM_SERVER_HI)) {
+		c->bytes_sent += send_sz;
+		if (c->bytes_sent == (sizeof LM_SERVER_HI)) {
 			new_state = LM_S_GET_QUERY;
 			new_reqevents = APR_POLLIN | APR_POLLHUP | APR_POLLERR;
 		} else {
-			new_state = LM_S_GET_QUERY;
+			new_state = old_state;
+			new_reqevents = old_reqevents;
 		}
 		break;
 	}
 	case LM_S_GET_QUERY: {
+		DEBUG("LM_S_GET_QUERY\n");
 		byte_buffer *q = &c->query;
 		apr_status_t recv_err;
-		size_t bigger = q->size + 64;
-		if (q->used > bigger) {
+		size_t bigger = q->used + 64;
+		if (q->size < bigger) {
 			if (byte_buffer_grow_to(&c->query, bigger)) {
 				FAIL("can't grow receive buffer\n");
 				new_state = LM_S_CLOSING;
@@ -252,31 +279,66 @@ void do_client_state_machine(const apr_pollfd_t *s, apr_pollset_t *pollset)
 		}
 		char *put_bytes_here = q->buf + q->used;
 		apr_size_t bytes_read = q->size - q->used;
+		DEBUG("put_bytes_here = %p\n", put_bytes_here);
 		recv_err = apr_socket_recv(client, put_bytes_here, &bytes_read);
+		DEBUG("recv %zu bytes, %d.\n", bytes_read, recv_err);
 		if (recv_err) {
-			abort(); // TODO
+			APR_FAIL(recv_err);
+			new_state = LM_S_CLOSING;
+			break;
 		}
 		if (bytes_read == 0) {
 			new_state = LM_S_CLOSING;
 			break;
 		}
 		q->used += bytes_read;
-
 		char *null_here = memchr(q->buf, '\x00', q->used);
 		if (null_here) {
 			new_state = LM_S_SEND_REPLY;
+			new_reqevents = APR_POLLOUT | APR_POLLHUP | APR_POLLERR;
 			q->used = null_here - q->buf;
 			bytes query_bytes;
 			query_bytes.start = c->query.buf;
 			query_bytes.end = null_here;
-			do_client_query(c->lmdb, query_bytes, &c->reply);
+			if (do_client_query(c->lmdb, query_bytes, &c->reply)) {
+				new_state = LM_S_CLOSING;
+				break;
+			}
+			c->bytes_sent = 0;
+			q->used = 0;
+			if (c->reply.used == 0) {
+				new_state = old_state;
+				new_reqevents = old_reqevents;
+			}
 		} else {
-			new_state = LM_S_GET_QUERY;
+			new_state = old_state;
+			new_reqevents = old_reqevents;
 		}
 		break;
 	}
 	case LM_S_SEND_REPLY: {
-		abort(); // TODO
+		DEBUG("LM_S_SEND_REPLY\n");
+		if (c->bytes_sent == c->reply.used) {
+			new_state = LM_S_GET_QUERY;
+			new_reqevents = APR_POLLIN | APR_POLLHUP | APR_POLLERR;
+			break;
+		}
+		apr_size_t nbytes = c->reply.used - c->bytes_sent;
+		char *bytes = c->reply.buf + c->bytes_sent;
+		apr_status_t send_err = apr_socket_send(client, bytes, &nbytes);
+		if (send_err && !(APR_STATUS_IS_EAGAIN(send_err))) {
+			APR_FAIL(send_err);
+			new_state = LM_S_CLOSING;
+			break;
+		}
+		c->bytes_sent += nbytes;
+		if (c->bytes_sent == c->reply.used) {
+			new_state = LM_S_GET_QUERY;
+			new_reqevents = APR_POLLIN | APR_POLLHUP | APR_POLLERR;
+		} else {
+			new_state = old_state;
+			new_reqevents = old_reqevents;
+		}
 		break;
 	}
 	default: {
@@ -303,9 +365,10 @@ void do_client_state_machine(const apr_pollfd_t *s, apr_pollset_t *pollset)
 		apr_pollset_remove(pollset, s);
 		apr_pollset_add(pollset, &s1);
 	}
+	c->state = new_state;
 }
 
-void do_client_accept(
+static void do_client_accept(
  apr_socket_t *acc,
  apr_pollset_t *pollset,
  apr_pool_t *pool,
@@ -314,13 +377,19 @@ void do_client_accept(
 	apr_socket_t *client = NULL;
 	apr_status_t acc_err = apr_socket_accept(&client, acc, pool);
 	if (acc_err) {
-		apr_fail(acc_err);
+		APR_FAIL(acc_err);
 		return;
 	}
 
 	apr_status_t opt_err = apr_socket_opt_set(client, APR_SO_NONBLOCK, 1);
 	if (opt_err) {
-		apr_fail(opt_err);
+		APR_FAIL(opt_err);
+		apr_maybe_fail(apr_socket_close(client));
+		return;
+	}
+	apr_status_t timeout_err = apr_socket_timeout_set(client, 0);
+	if (timeout_err) {
+		APR_FAIL(timeout_err);
 		apr_maybe_fail(apr_socket_close(client));
 		return;
 	}
@@ -374,21 +443,32 @@ int main(int argc, const char * const *argv, const char * const *env)
 		return 1;
 	}
 
-	char *rc_msg;
+	int rc; char *rc_msg;
 	const char *CREATE_MESSAGE_TABLES =
 		"CREATE TABLE IF NOT EXISTS messages ("
-		"  msgid INTEGER PRIMARY KEY NOT NULL,"
+		"  msgid INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,"
 		"  name BLOB NOT NULL,"
 		"  left INTEGER NOT NULL,"
-		"  delivered INTEGER,"
 		"  message BLOB NOT NULL"
 		");";
-	int rc = sqlite3_exec(sql, CREATE_MESSAGE_TABLES, NULL, NULL, &rc_msg);
+	rc = sqlite3_exec(sql, CREATE_MESSAGE_TABLES, NULL, NULL, &rc_msg);
 	if (rc != SQLITE_OK) {
-		FAIL("Can't create messages table: %s.\n", rc_msg);
+		FAIL("Can't create 'messages' table: %s.\n", rc_msg);
 		sqlite3_close(sql);
 		return 1;
 	}
+	const char *CREATE_MESSAGE_SEEN =
+		"CREATE TABLE IF NOT EXISTS seen ("
+		"  name BLOB PRIMARY KEY NOT NULL,"
+		"  msgid INTEGER  NOT NULL"
+		");";
+	rc = sqlite3_exec(sql, CREATE_MESSAGE_SEEN, NULL, NULL, &rc_msg);
+	if (rc != SQLITE_OK) {
+		FAIL("Can't create 'seen' table: %s.\n", rc_msg);
+		sqlite3_close(sql);
+		return 1;
+	}
+
 
 	lmdb.sql = sql;
 
@@ -399,17 +479,31 @@ int main(int argc, const char * const *argv, const char * const *env)
 		"VALUES (?, ?, ?);"
 	);
 	LM_SQLITE_PREP(&lmdb.get,
-		"SELECT name, left, message "
+		"SELECT name, left, message, msgid "
 		"FROM messages "
 		"WHERE name = ? "
 		"ORDER BY msgid ASC;"
 	);
-	LM_SQLITE_PREP(&lmdb.del,
-		"DELETE FROM messages WHERE name = ?;"
+	LM_SQLITE_PREP(&lmdb.seen_add,
+		"INSERT INTO seen (name, msgid) "
+		"VALUES (?, ?);"
+	);
+	LM_SQLITE_PREP(&lmdb.seen_del,
+		"DELETE FROM seen "
+		"WHERE name = ?;"
+	);
+	LM_SQLITE_PREP(&lmdb.seen_get,
+		"SELECT msgid FROM seen "
+		"WHERE name = ?;"
+	);
+	LM_SQLITE_PREP(&lmdb.drop,
+		"DELETE FROM messages "
+		"WHERE msgid < ? "
+		"  AND name = ?;"
 	);
 
 	APR_DO_OR_DIE(apr_socket_create(&acc, APR_INET, SOCK_STREAM, 0, pool));
-	/* APR_DO_OR_DIE(apr_socket_opt_set(acc, APR_SO_REUSEADDR, 1)); */
+	APR_DO_OR_DIE(apr_socket_opt_set(acc, APR_SO_REUSEADDR, 1));
 	apr_sockaddr_t *l_addr;
 	APR_DO_OR_DIE(apr_sockaddr_info_get(&l_addr, NULL, APR_INET, 1066, 0, pool));
 	APR_DO_OR_DIE(apr_socket_bind(acc, l_addr));
@@ -437,8 +531,8 @@ int main(int argc, const char * const *argv, const char * const *env)
 
 		for (apr_int32_t i = 0; i < signalled_len; i++) {
 			const apr_pollfd_t *s = signalled + i;
-			/* this is the acc socket */
 			if (s->desc.s == acc) {
+				DEBUG("accept\n");
 				do_client_accept(acc, pollset, pool, &lmdb);
 			} else {
 				do_client_state_machine(s, pollset);
@@ -453,7 +547,10 @@ int main(int argc, const char * const *argv, const char * const *env)
 
 	sqlite3_finalize(lmdb.put); lmdb.put = 0;
 	sqlite3_finalize(lmdb.get); lmdb.get = 0;
-	sqlite3_finalize(lmdb.del); lmdb.del = 0;
+	sqlite3_finalize(lmdb.seen_add); lmdb.seen_add = 0;
+	sqlite3_finalize(lmdb.seen_del); lmdb.seen_del = 0;
+	sqlite3_finalize(lmdb.seen_get); lmdb.seen_get = 0;
+	sqlite3_finalize(lmdb.drop); lmdb.drop = 0;
 
 	if (sqlite3_close(sql) != SQLITE_OK) {
 		fprintf(stderr, "Error closing DB (%s): %s.\n",
