@@ -7,8 +7,6 @@
 /*                   -Wall -Wextra -std=c99  */
 /*                   -lsqlite3 -lapr-1 -lrt  */
 
-
-
 #define _POSIX_C_SOURCE 199309L
 #define _BSD_SOURCE
 
@@ -17,14 +15,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
-
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <poll.h>
 #include <unistd.h>
 #include <time.h>
 
