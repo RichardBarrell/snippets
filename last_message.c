@@ -1,4 +1,4 @@
-/* This is a really sily C program that I'm using as a TCP-interfaced
+/* This is a really silly C program that I'm using as a TCP-interfaced
    DB backend, for a really terrible program which I wrote in a language
    with sockets but no storage or FFI. */
 
