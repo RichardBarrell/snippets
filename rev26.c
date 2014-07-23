@@ -77,13 +77,13 @@ static void *links(void *context) {
     for (i=0; i<NO_OF_ITERATIONS; i++) {
 		*x = 0;
 		*y = 0;
-        paws();
-        *x = 1;
-        a = *x;
-        b = *y;
-        paws();
+		paws();
+		*x = 1;
+		a = *x;
+		b = *y;
+		paws();
 		if ((a == 1) && (b == 0) && (*x == 1)) {
-            nots++;
+			nots++;
 		}
         if ((i>0) && (i%(1000000)==0)) {
             double pc = (double)nots * 1.0e-4;
