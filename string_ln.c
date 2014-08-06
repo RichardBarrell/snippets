@@ -27,23 +27,73 @@
 #include <errno.h>
 #include <dirent.h>
 
-#define DIE(...) do { fprintf(stderr, "Die on line %d: ", __LINE__); fprintf(stderr, __VA_ARGS__); perror(__FILE__); abort(); } while(0)
+#define DIE(...)                                                               \
+	do {                                                                   \
+		fprintf(stderr, "Die on line %d: ", __LINE__);                 \
+		fprintf(stderr, __VA_ARGS__);                                  \
+		perror(__FILE__);                                              \
+		abort();                                                       \
+	} while (0)
 
 #ifdef I_WANT_TO_DEBUG
-#define DEBUG(...) do { fprintf(stderr, __VA_ARGS__); } while(0)
+#define DEBUG(...)                                                             \
+	do {                                                                   \
+		fprintf(stderr, __VA_ARGS__);                                  \
+	} while (0)
 #else
-#define DEBUG(...) do { } while(0)
+#define DEBUG(...)                                                             \
+	do {                                                                   \
+	} while (0)
 #endif
 
-/* Not bothering to shrink these buffers. Size is bounded by max path length anyway. */
-#define UPSIZE_OR_DIE(BUFFER) do { size_t new_len = BUFFER ## _len << 1, esz = sizeof(BUFFER[0]), old_sz = esz * BUFFER ## _len, new_sz = esz * new_len; if ((new_sz <= old_sz) || (new_sz < esz)) { DIE("overflow upsizing.\n"); } BUFFER = realloc(BUFFER, new_sz); if (BUFFER == NULL) { DIE("realloc failed.\n"); } BUFFER ## _len = new_len; DEBUG("bigger %d, oldsz %zd, newsz %zd\n", __LINE__, old_sz, new_sz); } while(0) 
-#define ALLOC_OR_DIE(BUFFER) do { size_t esz = sizeof(BUFFER[0]), new_sz = esz * BUFFER ## _len; if (new_sz < esz) { DIE("overflow alloc.\n"); } BUFFER = malloc(new_sz); if (BUFFER == NULL) { DIE("Can't malloc()\n"); } } while(0)
+/* Not bothering to shrink these buffers. Size is bounded by max path length
+ * anyway. */
+#define UPSIZE_OR_DIE(BUFFER)                                                  \
+	do {                                                                   \
+		size_t new_len = BUFFER##_len << 1, esz = sizeof(BUFFER[0]),   \
+		       old_sz = esz * BUFFER##_len, new_sz = esz * new_len;    \
+		if ((new_sz <= old_sz) || (new_sz < esz)) {                    \
+			DIE("overflow upsizing.\n");                           \
+		}                                                              \
+		BUFFER = realloc(BUFFER, new_sz);                              \
+		if (BUFFER == NULL) {                                          \
+			DIE("realloc failed.\n");                              \
+		}                                                              \
+		BUFFER##_len = new_len;                                        \
+		DEBUG("bigger %d, oldsz %zd, newsz %zd\n", __LINE__, old_sz,   \
+		      new_sz);                                                 \
+	} while (0)
+#define ALLOC_OR_DIE(BUFFER)                                                   \
+	do {                                                                   \
+		size_t esz = sizeof(BUFFER[0]), new_sz = esz * BUFFER##_len;   \
+		if (new_sz < esz) {                                            \
+			DIE("overflow alloc.\n");                              \
+		}                                                              \
+		BUFFER = malloc(new_sz);                                       \
+		if (BUFFER == NULL) {                                          \
+			DIE("Can't malloc()\n");                               \
+		}                                                              \
+	} while (0)
 /* A sensible person would use an abstract data type. :P */
-#define S_PUSH(STACK, VALUE) do { if (STACK ## _n == STACK ## _len) { UPSIZE_OR_DIE(STACK); } STACK[STACK ## _n] = VALUE; STACK ## _n ++; } while(0)
-#define S_POP(STACK) do { if (STACK ## _n == 0) { DIE("underflow stack %s.\n", #STACK); } STACK ## _n --; } while(0)
-#define S_PEEK(STACK) (STACK[STACK ## _n - 1])
+#define S_PUSH(STACK, VALUE)                                                   \
+	do {                                                                   \
+		if (STACK##_n == STACK##_len) {                                \
+			UPSIZE_OR_DIE(STACK);                                  \
+		}                                                              \
+		STACK[STACK##_n] = VALUE;                                      \
+		STACK##_n++;                                                   \
+	} while (0)
+#define S_POP(STACK)                                                           \
+	do {                                                                   \
+		if (STACK##_n == 0) {                                          \
+			DIE("underflow stack %s.\n", #STACK);                  \
+		}                                                              \
+		STACK##_n--;                                                   \
+	} while (0)
+#define S_PEEK(STACK) (STACK[STACK##_n - 1])
 
-/* This program does two things: recursive directory traversal (ignoring symlinks), and 
+/* This program does two things: recursive directory traversal (ignoring
+ * symlinks), and
  * invocations of link(from_name, unto_name); */
 int main(int argc, char **argv)
 {
@@ -51,7 +101,8 @@ int main(int argc, char **argv)
 	size_t from_dir_len;
 	size_t unto_dir_len;
 
-	/* from_name here is a null-terminated string that gets mutated to contain
+	/* from_name here is a null-terminated string that gets mutated to
+	 * contain
 	 * every single file-name in the directory tree under from_dir. */
 	char *from_name;
 	size_t from_name_len = 1;
@@ -70,8 +121,10 @@ int main(int argc, char **argv)
 	size_t dir_stack_n = 0;
 
 	/* Each of the elements of from_off_stack is a previous value of
-	 * from_name_n. from_off_stack records the list of places where from_name
-	 * contains a '/' or '\0', so that we can pop components off when leaving
+	 * from_name_n. from_off_stack records the list of places where
+	 * from_name
+	 * contains a '/' or '\0', so that we can pop components off when
+	 * leaving
 	 * directories. */
 	size_t *from_off_stack;
 	size_t from_off_stack_len = 1;
@@ -85,7 +138,8 @@ int main(int argc, char **argv)
 	struct dirent *lookit;
 	struct stat checkit;
 
-	/* Set to 0 if file_name points to a file, 1 if it points to a directory.
+	/* Set to 0 if file_name points to a file, 1 if it points to a
+	 * directory.
 	 * Otherwise, is_dir is undefined. */
 	int is_dir;
 
@@ -100,8 +154,12 @@ int main(int argc, char **argv)
 	unto_dir_len = strlen(unto_dir);
 
 	/* alloc for string bytes plus terminator */
-	while ((from_dir_len + 1) >= from_name_len) { from_name_len <<= 1; }
-	while ((unto_dir_len + 1) >= unto_name_len) { unto_name_len <<= 1; }
+	while ((from_dir_len + 1) >= from_name_len) {
+		from_name_len <<= 1;
+	}
+	while ((unto_dir_len + 1) >= unto_name_len) {
+		unto_name_len <<= 1;
+	}
 
 	ALLOC_OR_DIE(from_name);
 	ALLOC_OR_DIE(unto_name);
@@ -125,16 +183,20 @@ int main(int argc, char **argv)
 	S_PUSH(from_off_stack, from_name_n);
 
 	while (dir_stack_n) {
-		/* Top of from_off_stack goes up and down as we ascend and descend
+		/* Top of from_off_stack goes up and down as we ascend and
+		 * descend
 		 * the directory tree. */
 		from_name_n = S_PEEK(from_off_stack);
 
 		/* readdir() and check errno. */
 		errno = 0;
 		lookit = readdir(dir_stack[dir_stack_n - 1]);
-		if (errno) { DIE("readdir() failed.\n"); }
+		if (errno) {
+			DIE("readdir() failed.\n");
+		}
 
-		/* NULL means "done with this directory" - go up and carry on. */
+		/* NULL means "done with this directory" - go up and carry on.
+		 */
 		if (lookit == NULL) {
 			DEBUG("leaving\n");
 			S_POP(from_off_stack);
@@ -145,7 +207,8 @@ int main(int argc, char **argv)
 			continue;
 		}
 
-		/* Some filesystems can fill out d_type immediately, which lets us
+		/* Some filesystems can fill out d_type immediately, which lets
+		 * us
 		 * skip boring things right now. */
 		switch (lookit->d_type) {
 		case DT_REG:
@@ -184,13 +247,15 @@ int main(int argc, char **argv)
 			if (lstat(from_name, &checkit)) {
 				DIE("Can't stat %s (%s).\n", from_name, fn);
 			}
-			if        (S_ISREG(checkit.st_mode)) {
+			if (S_ISREG(checkit.st_mode)) {
 				is_dir = 0;
 			} else if (S_ISDIR(checkit.st_mode)) {
 				is_dir = 1;
 			} else {
-				/* If it wasn't interesting then undo putting "fn" onto the end
-				 * of from_name and go have a shot at the next entry. */
+				/* If it wasn't interesting then undo putting
+				 * "fn" onto the end
+				 * of from_name and go have a shot at the next
+				 * entry. */
 				S_POP(from_off_stack);
 				continue;
 			}
@@ -200,7 +265,8 @@ int main(int argc, char **argv)
 		 * or a directory, because both the d_type and the lstat()
 		 * checks continue on not-a-file-or-directory. */
 
-		/* Handle directories by pushing them and descending immediately.
+		/* Handle directories by pushing them and descending
+		 * immediately.
 		 * Keeping the fn path segment on from_name makes opendir() and
 		 * link() calls go into the decended-into directory. */
 		if (is_dir) {
@@ -213,9 +279,12 @@ int main(int argc, char **argv)
 
 		/* Directories handled above; must be looking at a file now. */
 
-		/* Now tack fn onto the end of unto_name. Because unto_name has exactly
-		 * one path component under it, we work out where the replacable slash
-		 * should be from the length of the original dir name. No need to store
+		/* Now tack fn onto the end of unto_name. Because unto_name has
+		 * exactly
+		 * one path component under it, we work out where the replacable
+		 * slash
+		 * should be from the length of the original dir name. No need
+		 * to store
 		 * that on a stack. */
 
 		unto_name[unto_dir_len] = '/';
@@ -237,8 +306,10 @@ int main(int argc, char **argv)
 			DIE("link() failed for wrong reason.\n");
 		}
 
-		/* Once we've used a file, take its name of the end of from_name to go
-		 * back up into the directory prior to descending to the next file. */
+		/* Once we've used a file, take its name of the end of from_name
+		 * to go
+		 * back up into the directory prior to descending to the next
+		 * file. */
 
 		S_POP(from_off_stack);
 	}

@@ -11,7 +11,8 @@
    ./nulbyte | od -t x1
 */
 
-int main(int argc, const char** argv) {
+int main(int argc, const char **argv)
+{
 	putchar(0);
 	return 0;
 }

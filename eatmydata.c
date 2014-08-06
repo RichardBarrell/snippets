@@ -18,20 +18,25 @@
 static size_t fsyncs_eaten = 0, syncs_eaten = 0;
 
 static void print_munchness(void) __attribute__((destructor));
-static void print_munchness(void) {
-	fprintf(stderr, "Ate %zd fsyncs, %zd syncs.\n", fsyncs_eaten, syncs_eaten);
+static void print_munchness(void)
+{
+	fprintf(stderr, "Ate %zd fsyncs, %zd syncs.\n", fsyncs_eaten,
+	        syncs_eaten);
 }
 
-int fdatasync(int fd) {
-    fsyncs_eaten++;
-    return 0;
-}
-
-int fsync(int fd) {
+int fdatasync(int fd)
+{
 	fsyncs_eaten++;
 	return 0;
 }
 
-void sync(void) {
+int fsync(int fd)
+{
+	fsyncs_eaten++;
+	return 0;
+}
+
+void sync(void)
+{
 	syncs_eaten++;
 }

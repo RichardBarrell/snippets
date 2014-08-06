@@ -6,11 +6,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
 	long howmuch = 1 << 20;
 	if (argc >= 2) {
 		howmuch = atol(argv[1]);
-		if (howmuch<1) {
+		if (howmuch < 1) {
 			fprintf(stderr, "At least one byte please.\n");
 			return 1;
 		}
@@ -20,7 +21,7 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "Oh no that didn't malloc.\n");
 	}
 	long i;
-	for (i=0;i<howmuch;++i) {
+	for (i = 0; i < howmuch; ++i) {
 		tibet[i] = howmuch & 0xFF;
 	}
 	free(tibet);

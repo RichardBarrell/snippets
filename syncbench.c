@@ -16,7 +16,8 @@
 #include <errno.h>
 #include <string.h>
 
-int mono_time(double *result) {
+int mono_time(double *result)
+{
 	struct timespec now;
 	if (clock_gettime(CLOCK_MONOTONIC, &now)) {
 		return -1;
@@ -25,7 +26,8 @@ int mono_time(double *result) {
 	return 0;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
 	double t0, t1;
 	if (argc != 5) {
 		puts("Usage: syncbench file write_size write_qty (d|s)");
@@ -50,7 +52,7 @@ int main(int argc, char **argv) {
 		puts("You want me to write no bytes?");
 		return 1;
 	}
-	int fd = open(argv[1], O_CREAT|O_WRONLY|O_EXCL);
+	int fd = open(argv[1], O_CREAT | O_WRONLY | O_EXCL);
 	if (fd == -1) {
 		if (errno == EEXIST) {
 			printf("Refusing to nuke existing file %s.\n", argv[1]);
@@ -96,7 +98,7 @@ int main(int argc, char **argv) {
 	}
 	char *c = d ? "fdatasync" : "fsync";
 	printf("Performed %d %s()s in %f seconds.\n", no_of_writes, c, t1 - t0);
-	double rate = no_of_writes/(t1-t0);
-	printf("That's %f calls/second, or %f seconds/call.\n", rate, 1/rate);
+	double rate = no_of_writes / (t1 - t0);
+	printf("That's %f calls/second, or %f seconds/call.\n", rate, 1 / rate);
 	return 0;
 }

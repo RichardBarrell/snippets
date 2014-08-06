@@ -7,7 +7,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-int main (int argc, char **argv) {
+int main(int argc, char **argv)
+{
 	SDL_Init(SDL_INIT_CDROM);
 	atexit(SDL_Quit);
 

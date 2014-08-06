@@ -13,7 +13,8 @@
 #include <string.h>
 #include <time.h>
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
 	struct timespec tbegin, tfinish;
 	size_t thismuch;
 	long long int thismany;
@@ -37,7 +38,7 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	size_t longlong_bits = 8*sizeof(long long);
+	size_t longlong_bits = 8 * sizeof(long long);
 	if ((size_t)thismany >= longlong_bits - 1) {
 		printf("%lld is too many, I can't count to 1 << %zd.\n",
 		       thismany, longlong_bits - 1);
@@ -50,10 +51,9 @@ int main(int argc, char **argv) {
 	if (thesebytes == NULL) {
 		printf("No, can't allocate that %zu bytes.\n", thismuch);
 	}
-	printf("allocated %zd bytes at %p.\n", thismuch, (void*)thesebytes);
+	printf("allocated %zd bytes at %p.\n", thismuch, (void *)thesebytes);
 	printf("will walk %lld times.\n", thismany);
 	memset(thesebytes, 0, thismuch);
-
 
 	clock_gettime(CLOCK_REALTIME, &tbegin);
 	for (long long l = 0; l < thismany; l++) {
@@ -63,7 +63,7 @@ int main(int argc, char **argv) {
 
 	long diff_sec = (long)tfinish.tv_sec - (long)tbegin.tv_sec;
 	long diff_nsec = (long)tfinish.tv_nsec - (long)tbegin.tv_nsec;
-	double nanos = 1.0e9*(double)diff_sec + (double)diff_nsec;
+	double nanos = 1.0e9 * (double)diff_sec + (double)diff_nsec;
 	double ops = (double)thismuch * (double)thismany;
 	printf("%f ns/byte\n", nanos / ops);
 

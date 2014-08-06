@@ -13,27 +13,26 @@
 #include <string.h>
 #include <stdio.h>
 
-
 static const char message[] = "Hello, spooky world.\n\0";
 
 static int be_child(void)
 {
-	int fd = open("./mmap_output", O_CREAT|O_TRUNC|O_RDWR, 0666);
+	int fd = open("./mmap_output", O_CREAT | O_TRUNC | O_RDWR, 0666);
 	if (fd < 0) {
 		abort();
 	}
-	ftruncate(fd, 1<<10);
-	char *out = mmap(NULL, 1<<10, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-	memset(out, '\r', 1<<10);
+	ftruncate(fd, 1 << 10);
+	char *out =
+	    mmap(NULL, 1 << 10, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	memset(out, '\r', 1 << 10);
 	sprintf(out, "%s", message);
 	abort();
 	return -1;
 }
 
-
 static int be_parent(pid_t child)
 {
-	char content[1<<10];
+	char content[1 << 10];
 	pid_t awaited = wait(NULL);
 	if (awaited != child) {
 		printf("wait() didn't return my child's PID\n");
@@ -44,8 +43,8 @@ static int be_parent(pid_t child)
 		printf("couldn't open fd\n");
 		return 1;
 	}
-	if (read(fd, content, 1<<10) != (1<<10)) {
-		printf("expecting child to leave me %d bytes.\n", 1<<10);
+	if (read(fd, content, 1 << 10) != (1 << 10)) {
+		printf("expecting child to leave me %d bytes.\n", 1 << 10);
 		return 1;
 	}
 

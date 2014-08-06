@@ -31,15 +31,23 @@
 const char LM_SERVER_HI[4] = "L00\x00"
 
 #define STDERR_HERE() fprintf(stderr, "%s %d ", __FILE__, __LINE__)
-#define FAIL(...) do { STDERR_HERE(); fprintf(stderr, __VA_ARGS__); perror(" "); } while(0)
+#define FAIL(...)                                                              \
+	do {                                                                   \
+		STDERR_HERE();                                                 \
+		fprintf(stderr, __VA_ARGS__);                                  \
+		perror(" ");                                                   \
+	} while (0)
 
 #if 1
-#define DEBUG(...) do { STDERR_HERE(); fprintf(stderr, __VA_ARGS__); } while(0)
+#define DEBUG(...)                                                             \
+	do {                                                                   \
+		STDERR_HERE();                                                 \
+		fprintf(stderr, __VA_ARGS__);                                  \
+	} while (0)
 #else
 #define DEBUG(...)
 #endif
-
-static int print_usage(void)
+    static int print_usage(void)
 {
 	fprintf(stderr, "Usage: last_message [foo.db]\n");
 	return 1;
@@ -55,29 +63,35 @@ static void apr_fail(apr_status_t apr_err)
 	fputc('\n', stderr);
 }
 
-#define APR_FAIL(e) do { STDERR_HERE(); apr_fail(e); } while(0)
+#define APR_FAIL(e)                                                            \
+	do {                                                                   \
+		STDERR_HERE();                                                 \
+		apr_fail(e);                                                   \
+	} while (0)
 
-static void apr_maybe_fail(apr_status_t apr_err) {
+static void apr_maybe_fail(apr_status_t apr_err)
+{
 	if (apr_err != 0)
 		apr_fail(apr_err);
 }
 
-#define APR_DO_OR_DIE(call) do { \
-	apr_status_t err; \
-	err = (call); \
-	if (err) { \
-		FAIL("apr: %s\n", #call); \
-		apr_fail(err); \
-		goto die; \
-	} \
-	} while(0)
+#define APR_DO_OR_DIE(call)                                                    \
+	do {                                                                   \
+		apr_status_t err;                                              \
+		err = (call);                                                  \
+		if (err) {                                                     \
+			FAIL("apr: %s\n", #call);                              \
+			apr_fail(err);                                         \
+			goto die;                                              \
+		}                                                              \
+	} while (0)
 
 static size_t next_power_of_two(size_t v)
 {
 	size_t shift;
 
 	v--;
-	for (shift=1; shift<(8/2 * sizeof v); shift <<= 1) {
+	for (shift = 1; shift < (8 / 2 * sizeof v); shift <<= 1) {
 		v |= v >> shift;
 	}
 	v++;
@@ -85,7 +99,8 @@ static size_t next_power_of_two(size_t v)
 	return v;
 }
 
-typedef struct bytes {
+typedef struct bytes
+{
 	const char *start;
 	const char *end;
 } bytes;
@@ -93,7 +108,9 @@ typedef struct bytes {
 static int bytes_start_with(const char *needle, bytes haystack)
 {
 	size_t len = haystack.end - haystack.start;
-	if (len < strlen(needle)) { return 0; }
+	if (len < strlen(needle)) {
+		return 0;
+	}
 	return (0 == strncmp(needle, haystack.start, strlen(needle)));
 }
 
@@ -103,7 +120,8 @@ static char *bytes_find_delimiter(char delimiter, bytes haystack)
 	return memchr(haystack.start, delimiter, len);
 }
 
-typedef struct {
+typedef struct
+{
 	char *buf;
 	size_t size, used;
 } byte_buffer;
@@ -142,7 +160,8 @@ static void byte_buffer_free(byte_buffer *b)
 	b->used = 0;
 }
 
-typedef struct lmSQL {
+typedef struct lmSQL
+{
 	sqlite3 *sql;
 	sqlite3_stmt *put;
 	sqlite3_stmt *get;
@@ -160,7 +179,8 @@ typedef enum per_client_state {
 	LM_S_CLOSING,
 } per_client_state;
 
-typedef struct per_client {
+typedef struct per_client
+{
 	per_client_state state;
 	apr_size_t bytes_sent;
 	byte_buffer query;
@@ -198,23 +218,31 @@ static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
 		return -1;
 	}
 
-#define LM_DB_DO(thing) do { \
-	if (SQLITE_OK != (thing)) {			   \
-		FAIL("DB error: %s\n", sqlite3_errmsg(lmdb->sql)); \
-		goto query_error; \
-	} } while(0)
-#define LM_DB_TC(s, n, t) do { int t_wanted = (t), \
-	t_found = sqlite3_column_type((s), (n)); \
-	if (t_wanted != t_found) { \
-		FAIL("Bad type. Wanted %d, got %d.\n", t_wanted, t_found); \
-		goto query_error; \
-	} } while(0)
-#define LM_DB_CC(s, n) do { int n_wanted = (n), \
-	n_found = sqlite3_column_count((s)); \
-	if (n_wanted != n_found) { \
-		FAIL("Bad width. Wanted %d, got %d.\n", n_wanted, n_found); \
-		goto query_error; \
-	} } while(0)
+#define LM_DB_DO(thing)                                                        \
+	do {                                                                   \
+		if (SQLITE_OK != (thing)) {                                    \
+			FAIL("DB error: %s\n", sqlite3_errmsg(lmdb->sql));     \
+			goto query_error;                                      \
+		}                                                              \
+	} while (0)
+#define LM_DB_TC(s, n, t)                                                      \
+	do {                                                                   \
+		int t_wanted = (t), t_found = sqlite3_column_type((s), (n));   \
+		if (t_wanted != t_found) {                                     \
+			FAIL("Bad type. Wanted %d, got %d.\n", t_wanted,       \
+			     t_found);                                         \
+			goto query_error;                                      \
+		}                                                              \
+	} while (0)
+#define LM_DB_CC(s, n)                                                         \
+	do {                                                                   \
+		int n_wanted = (n), n_found = sqlite3_column_count((s));       \
+		if (n_wanted != n_found) {                                     \
+			FAIL("Bad width. Wanted %d, got %d.\n", n_wanted,      \
+			     n_found);                                         \
+			goto query_error;                                      \
+		}                                                              \
+	} while (0)
 
 	if (bytes_start_with("PUT ", query)) {
 		bytes name;
@@ -237,7 +265,9 @@ static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
 		LM_DB_DO(q_bytes_bind(s, 1, name));
 		LM_DB_DO(q_now_bind(s, 2));
 		LM_DB_DO(q_bytes_bind(s, 3, message));
-		if (sqlite3_step(s) != SQLITE_DONE) { LM_DB_DO(!SQLITE_OK); }
+		if (sqlite3_step(s) != SQLITE_DONE) {
+			LM_DB_DO(!SQLITE_OK);
+		}
 		stamp_S(reply, "SAVED");
 	} else if (bytes_start_with("GET ", query)) {
 		bytes name;
@@ -252,8 +282,12 @@ static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
 
 		for (;;) {
 			e = sqlite3_step(s);
-			if (e == SQLITE_DONE) { break; }
-			if (e != SQLITE_ROW) { goto query_error; }
+			if (e == SQLITE_DONE) {
+				break;
+			}
+			if (e != SQLITE_ROW) {
+				goto query_error;
+			}
 			DEBUG("row\n");
 			LM_DB_CC(s, 3);
 			LM_DB_TC(s, 0, SQLITE_INTEGER);
@@ -269,26 +303,17 @@ static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
 			message.end += sqlite3_column_bytes(s, 2);
 
 			int line_len = snprintf(
-			    NULL,
-			    0,
-			    "%lld %lld %.*s",
-			    (long long int)left,
+			    NULL, 0, "%lld %lld %.*s", (long long int)left,
 			    (long long int)msgid,
-			    (int)(message.end - message.start),
-			    message.start);
+			    (int)(message.end - message.start), message.start);
 
 			byte_buffer_grow_to(reply, reply->used + line_len + 32);
 
 			reply->used += snprintf(
-			    reply->buf + reply->used,
-			    line_len + 32,
-			    "%d:%lld %lld %.*s,",
-			    line_len,
-			    (long long int)left,
+			    reply->buf + reply->used, line_len + 32,
+			    "%d:%lld %lld %.*s,", line_len, (long long int)left,
 			    (long long int)msgid,
-			    (int)(message.end - message.start),
-			    message.start
-			);
+			    (int)(message.end - message.start), message.start);
 			max_msgid = msgid > max_msgid ? msgid : max_msgid;
 		}
 		byte_buffer_grow_to(reply, reply->used + 1);
@@ -298,13 +323,17 @@ static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
 		sqlite3_reset(s);
 		s = lmdb->seen_del;
 		LM_DB_DO(q_bytes_bind(s, 1, name));
-		if (sqlite3_step(s) != SQLITE_DONE) { LM_DB_DO(!SQLITE_OK); }
+		if (sqlite3_step(s) != SQLITE_DONE) {
+			LM_DB_DO(!SQLITE_OK);
+		}
 		sqlite3_reset(s);
 
 		s = lmdb->seen_add;
 		LM_DB_DO(q_bytes_bind(s, 1, name));
 		LM_DB_DO(sqlite3_bind_int64(s, 2, max_msgid));
-		if (sqlite3_step(s) != SQLITE_DONE) { LM_DB_DO(!SQLITE_OK); }
+		if (sqlite3_step(s) != SQLITE_DONE) {
+			LM_DB_DO(!SQLITE_OK);
+		}
 	} else if (bytes_start_with("SEEN ", query)) {
 		bytes name;
 		name.start = query.start + strlen("SEEN ");
@@ -315,8 +344,12 @@ static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
 		LM_DB_DO(q_bytes_bind(s, 1, name));
 		for (;;) {
 			int e = sqlite3_step(s);
-			if (e == SQLITE_DONE) { break; }
-			if (e != SQLITE_ROW) { LM_DB_DO(!SQLITE_OK); }
+			if (e == SQLITE_DONE) {
+				break;
+			}
+			if (e != SQLITE_ROW) {
+				LM_DB_DO(!SQLITE_OK);
+			}
 			LM_DB_CC(s, 1);
 			LM_DB_TC(s, 0, SQLITE_INTEGER);
 			int64_t msgid = sqlite3_column_int64(s, 0);
@@ -331,7 +364,9 @@ static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
 		s = lmdb->drop;
 		LM_DB_DO(sqlite3_bind_int64(s, 1, max_msgid));
 		LM_DB_DO(q_bytes_bind(s, 2, name));
-		if (sqlite3_step(s) != SQLITE_DONE) { LM_DB_DO(!SQLITE_OK); }
+		if (sqlite3_step(s) != SQLITE_DONE) {
+			LM_DB_DO(!SQLITE_OK);
+		}
 		stamp_S(reply, "OK");
 	} else {
 		stamp_S(reply, "INVALID");
@@ -342,20 +377,21 @@ static int do_client_query(lmSQL *lmdb, bytes query, byte_buffer *reply)
 	query_error:
 		stamp_S(reply, "ERROR");
 	}
-	if (s) { sqlite3_reset(s); }
+	if (s) {
+		sqlite3_reset(s);
+	}
 	return 0;
 }
 
-static void do_client_state_machine(
- const apr_pollfd_t *s,
- apr_pollset_t *pollset)
+static void do_client_state_machine(const apr_pollfd_t *s,
+                                    apr_pollset_t *pollset)
 {
 	struct per_client *c = s->client_data;
 	apr_socket_t *client = s->desc.s;
 	per_client_state old_state = c->state, new_state;
 	apr_int16_t old_reqevents = s->reqevents, new_reqevents;
 	apr_int16_t send_reqevents = APR_POLLOUT | APR_POLLHUP | APR_POLLERR;
-	apr_int16_t recv_reqevents = APR_POLLIN  | APR_POLLHUP | APR_POLLERR;
+	apr_int16_t recv_reqevents = APR_POLLIN | APR_POLLHUP | APR_POLLERR;
 	byte_buffer *q = &c->query;
 
 	switch (old_state) {
@@ -421,7 +457,7 @@ static void do_client_state_machine(
 		q->used += bytes_read;
 
 		char *null_here;
-		do_you_want_to_try_a_query:
+	do_you_want_to_try_a_query:
 		null_here = memchr(q->buf, '\x00', q->used);
 		if (null_here) {
 			new_state = LM_S_SEND_REPLY;
@@ -497,11 +533,8 @@ static void do_client_state_machine(
 	c->state = new_state;
 }
 
-static void do_client_accept(
- apr_socket_t *acc,
- apr_pollset_t *pollset,
- apr_pool_t *pool,
- lmSQL *lmdb)
+static void do_client_accept(apr_socket_t *acc, apr_pollset_t *pollset,
+                             apr_pool_t *pool, lmSQL *lmdb)
 {
 	apr_socket_t *client = NULL;
 	apr_status_t acc_err = apr_socket_accept(&client, acc, pool);
@@ -551,12 +584,12 @@ static void shutdown_on_signal(int signum)
 	global_shutting_down = signum;
 }
 
-int main(int argc, const char * const *argv, const char * const *env)
+int main(int argc, const char *const *argv, const char *const *env)
 {
 	const char *db_filename = "last_message.db";
 	int dying = 0;
 	sqlite3 *sql = NULL;
-	lmSQL lmdb = { };
+	lmSQL lmdb = {};
 
 	apr_socket_t *acc = NULL;
 	apr_pollset_t *pollset = NULL;
@@ -567,37 +600,41 @@ int main(int argc, const char * const *argv, const char * const *env)
 	apr_pool_t *pool;
 	APR_DO_OR_DIE(apr_pool_create(&pool, NULL));
 
-	if (argc > 2) { return print_usage(); }
+	if (argc > 2) {
+		return print_usage();
+	}
 	if (argc == 2) {
-		if (strcmp(argv[1], "--help") == 0) { return print_usage(); }
+		if (strcmp(argv[1], "--help") == 0) {
+			return print_usage();
+		}
 		db_filename = argv[1];
 	}
 	int err;
 	if ((err = sqlite3_open(db_filename, &sql)) != SQLITE_OK) {
-		fprintf(stderr, "Can't open DB (%s): %s.\n",
-			db_filename, sqlite3_errstr(err));
+		fprintf(stderr, "Can't open DB (%s): %s.\n", db_filename,
+		        sqlite3_errstr(err));
 		return 1;
 	}
 
-	int rc; char *rc_msg;
+	int rc;
+	char *rc_msg;
 	const char *CREATE_MESSAGE_TABLES =
-		"CREATE TABLE IF NOT EXISTS messages ("
-		"  msgid INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,"
-		"  name BLOB NOT NULL,"
-		"  left INTEGER NOT NULL,"
-		"  message BLOB NOT NULL"
-		");";
+	    "CREATE TABLE IF NOT EXISTS messages ("
+	    "  msgid INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,"
+	    "  name BLOB NOT NULL,"
+	    "  left INTEGER NOT NULL,"
+	    "  message BLOB NOT NULL"
+	    ");";
 	rc = sqlite3_exec(sql, CREATE_MESSAGE_TABLES, NULL, NULL, &rc_msg);
 	if (rc != SQLITE_OK) {
 		FAIL("Can't create 'messages' table: %s.\n", rc_msg);
 		sqlite3_close(sql);
 		return 1;
 	}
-	const char *CREATE_MESSAGE_SEEN =
-		"CREATE TABLE IF NOT EXISTS seen ("
-		"  name BLOB PRIMARY KEY NOT NULL,"
-		"  msgid INTEGER  NOT NULL"
-		");";
+	const char *CREATE_MESSAGE_SEEN = "CREATE TABLE IF NOT EXISTS seen ("
+	                                  "  name BLOB PRIMARY KEY NOT NULL,"
+	                                  "  msgid INTEGER  NOT NULL"
+	                                  ");";
 	rc = sqlite3_exec(sql, CREATE_MESSAGE_SEEN, NULL, NULL, &rc_msg);
 	if (rc != SQLITE_OK) {
 		FAIL("Can't create 'seen' table: %s.\n", rc_msg);
@@ -605,43 +642,41 @@ int main(int argc, const char * const *argv, const char * const *env)
 		return 1;
 	}
 
-
 	lmdb.sql = sql;
 
-#define LM_SQLITE_PREP(thing, statement) do { int prep = sqlite3_prepare_v2(sql, (statement), -1, (thing), NULL); if (prep != SQLITE_OK) { FAIL("SQL compilation error: (%s) while compiling (%s).\n", sqlite3_errmsg(sql), statement); goto die; } } while(0)
+#define LM_SQLITE_PREP(thing, statement)                                       \
+	do {                                                                   \
+		int prep =                                                     \
+		    sqlite3_prepare_v2(sql, (statement), -1, (thing), NULL);   \
+		if (prep != SQLITE_OK) {                                       \
+			FAIL("SQL compilation error: (%s) while compiling "    \
+			     "(%s).\n",                                        \
+			     sqlite3_errmsg(sql), statement);                  \
+			goto die;                                              \
+		}                                                              \
+	} while (0)
 
-	LM_SQLITE_PREP(&lmdb.put,
-		"INSERT INTO messages (name, left, message) "
-		"VALUES (?, ?, ?);"
-	);
-	LM_SQLITE_PREP(&lmdb.get,
-		"SELECT msgid, left, message "
-		"FROM messages "
-		"WHERE name = ? "
-		"ORDER BY msgid ASC;"
-	);
-	LM_SQLITE_PREP(&lmdb.seen_add,
-		"INSERT INTO seen (name, msgid) "
-		"VALUES (?, ?);"
-	);
-	LM_SQLITE_PREP(&lmdb.seen_del,
-		"DELETE FROM seen "
-		"WHERE name = ?;"
-	);
-	LM_SQLITE_PREP(&lmdb.seen_get,
-		"SELECT msgid FROM seen "
-		"WHERE name = ?;"
-	);
-	LM_SQLITE_PREP(&lmdb.drop,
-		"DELETE FROM messages "
-		"WHERE msgid <= ? "
-		"  AND name = ?;"
-	);
+	LM_SQLITE_PREP(&lmdb.put, "INSERT INTO messages (name, left, message) "
+	                          "VALUES (?, ?, ?);");
+	LM_SQLITE_PREP(&lmdb.get, "SELECT msgid, left, message "
+	                          "FROM messages "
+	                          "WHERE name = ? "
+	                          "ORDER BY msgid ASC;");
+	LM_SQLITE_PREP(&lmdb.seen_add, "INSERT INTO seen (name, msgid) "
+	                               "VALUES (?, ?);");
+	LM_SQLITE_PREP(&lmdb.seen_del, "DELETE FROM seen "
+	                               "WHERE name = ?;");
+	LM_SQLITE_PREP(&lmdb.seen_get, "SELECT msgid FROM seen "
+	                               "WHERE name = ?;");
+	LM_SQLITE_PREP(&lmdb.drop, "DELETE FROM messages "
+	                           "WHERE msgid <= ? "
+	                           "  AND name = ?;");
 
 	APR_DO_OR_DIE(apr_socket_create(&acc, APR_INET, SOCK_STREAM, 0, pool));
 	APR_DO_OR_DIE(apr_socket_opt_set(acc, APR_SO_REUSEADDR, 1));
 	apr_sockaddr_t *l_addr;
-	APR_DO_OR_DIE(apr_sockaddr_info_get(&l_addr, NULL, APR_INET, 1066, 0, pool));
+	APR_DO_OR_DIE(
+	    apr_sockaddr_info_get(&l_addr, NULL, APR_INET, 1066, 0, pool));
 	APR_DO_OR_DIE(apr_socket_bind(acc, l_addr));
 	APR_DO_OR_DIE(apr_socket_listen(acc, 8));
 
@@ -663,8 +698,12 @@ int main(int argc, const char * const *argv, const char * const *env)
 	const apr_pollfd_t *signalled = NULL;
 	apr_status_t poll_err = 0;
 	for (;;) {
-		if (global_shutting_down) { goto goodnight; }
-		if (!APR_STATUS_IS_EINTR(poll_err)) { APR_DO_OR_DIE(poll_err); }
+		if (global_shutting_down) {
+			goto goodnight;
+		}
+		if (!APR_STATUS_IS_EINTR(poll_err)) {
+			APR_DO_OR_DIE(poll_err);
+		}
 		for (apr_int32_t i = 0; i < signalled_len; i++) {
 			const apr_pollfd_t *s = signalled + i;
 			if (s->desc.s == acc) {
@@ -674,10 +713,8 @@ int main(int argc, const char * const *argv, const char * const *env)
 				do_client_state_machine(s, pollset);
 			}
 		}
-		poll_err = apr_pollset_poll(
-		    pollset, -1,
-		    &signalled_len,
-		    &signalled);
+		poll_err =
+		    apr_pollset_poll(pollset, -1, &signalled_len, &signalled);
 	}
 
 	if (0) {
@@ -690,16 +727,22 @@ int main(int argc, const char * const *argv, const char * const *env)
 		dying = 1;
 	}
 
-	sqlite3_finalize(lmdb.put); lmdb.put = 0;
-	sqlite3_finalize(lmdb.get); lmdb.get = 0;
-	sqlite3_finalize(lmdb.seen_add); lmdb.seen_add = 0;
-	sqlite3_finalize(lmdb.seen_del); lmdb.seen_del = 0;
-	sqlite3_finalize(lmdb.seen_get); lmdb.seen_get = 0;
-	sqlite3_finalize(lmdb.drop); lmdb.drop = 0;
+	sqlite3_finalize(lmdb.put);
+	lmdb.put = 0;
+	sqlite3_finalize(lmdb.get);
+	lmdb.get = 0;
+	sqlite3_finalize(lmdb.seen_add);
+	lmdb.seen_add = 0;
+	sqlite3_finalize(lmdb.seen_del);
+	lmdb.seen_del = 0;
+	sqlite3_finalize(lmdb.seen_get);
+	lmdb.seen_get = 0;
+	sqlite3_finalize(lmdb.drop);
+	lmdb.drop = 0;
 
 	if (sqlite3_close(sql) != SQLITE_OK) {
-		fprintf(stderr, "Error closing DB (%s): %s.\n",
-			db_filename, sqlite3_errmsg(sql));
+		fprintf(stderr, "Error closing DB (%s): %s.\n", db_filename,
+		        sqlite3_errmsg(sql));
 		return 1;
 	}
 

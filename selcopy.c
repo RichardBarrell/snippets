@@ -6,28 +6,31 @@
 #include <errno.h>
 
 const char usage_message[] =
-	"Usage: selcopy out_dir/ [filename]*\n"
-	"Copies SELinux attributes from listed files\n"
-	"to files with the same name in out_dir.\n"
-	"\n"
-	"This is meant for copying SELinux attributes over after copying\n"
-	"filesystems with cpio. e.g.:\n"
-	"\n"
-	"cd /old_system\n"
-	"find . -exec selcopy /new_filesystem/ {} +\n"
-	"";
+    "Usage: selcopy out_dir/ [filename]*\n"
+    "Copies SELinux attributes from listed files\n"
+    "to files with the same name in out_dir.\n"
+    "\n"
+    "This is meant for copying SELinux attributes over after copying\n"
+    "filesystems with cpio. e.g.:\n"
+    "\n"
+    "cd /old_system\n"
+    "find . -exec selcopy /new_filesystem/ {} +\n"
+    "";
 
-typedef struct {
+typedef struct
+{
 	char *c;
 	size_t len;
 	size_t size;
 } string;
 
-static size_t
-next_power_of_2(size_t x) {
+static size_t next_power_of_2(size_t x)
+{
 	/* TODO: look up best way on bit-fiddling wiki. */
-	if (x == 0) return 1;
-	if (x == (x & (x >> 1))) return x;
+	if (x == 0)
+		return 1;
+	if (x == (x & (x >> 1)))
+		return x;
 	size_t y = x;
 	size_t z = x >> 1;
 	while (z) {
@@ -37,17 +40,16 @@ next_power_of_2(size_t x) {
 	return y + 1;
 }
 
-static void
-string_init(string *s)
+static void string_init(string *s)
 {
 	s->c = malloc(1);
 	s->len = 0;
 	s->size = 1;
-	if (s->c == NULL) abort();
+	if (s->c == NULL)
+		abort();
 }
 
-static void
-string_expand(string *s, size_t request_size)
+static void string_expand(string *s, size_t request_size)
 {
 	size_t new_size = next_power_of_2(request_size);
 	char *new_c = realloc(s->c, new_size);
@@ -57,8 +59,8 @@ string_expand(string *s, size_t request_size)
 	s->size = new_size;
 }
 
-static void
-string_append(string *s, char *source, size_t length) {
+static void string_append(string *s, char *source, size_t length)
+{
 	ssize_t spare = s->size - s->len;
 	if (length > spare)
 		string_expand(s, s->size + length);
@@ -66,8 +68,8 @@ string_append(string *s, char *source, size_t length) {
 	s->len += length;
 }
 
-static void
-string_free(string *s) {
+static void string_free(string *s)
+{
 	free(s->c);
 	s->c = NULL;
 	s->len = 0;
@@ -96,7 +98,7 @@ int main(int argc, char **argv)
 	}
 
 	int argv_pos;
-	for (argv_pos=2; argv_pos < argc; argv_pos++) {
+	for (argv_pos = 2; argv_pos < argc; argv_pos++) {
 		out_path.len = out_prefixlen;
 
 		char *suffix = argv[argv_pos];
@@ -106,11 +108,8 @@ int main(int argc, char **argv)
 
 		ssize_t new_len;
 		do {
-			new_len = lgetxattr(
-				suffix,
-				"security.selinux",
-				attr.c,
-				attr.size);
+			new_len = lgetxattr(suffix, "security.selinux", attr.c,
+			                    attr.size);
 			if (errno == ERANGE) {
 				string_expand(&attr, attr.size << 1);
 			} else {
@@ -119,12 +118,8 @@ int main(int argc, char **argv)
 			}
 		} while (new_len == -1);
 
-		int setxattr_rv = lsetxattr(
-			out_path.c,
-			"security.selinux",
-			attr.c,
-			strlen(attr.c),
-			0);
+		int setxattr_rv = lsetxattr(out_path.c, "security.selinux",
+		                            attr.c, strlen(attr.c), 0);
 		if (setxattr_rv != 0) {
 			fprintf(stderr, "lsetxattr (%d)\n", errno);
 			perror(suffix);
