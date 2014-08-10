@@ -8,6 +8,7 @@ import Data.List
 import System.IO
 import Network
 import Data.Char
+import Control.Exception
 import Control.Concurrent
 import Control.Concurrent.Chan
 import System.Environment
@@ -29,8 +30,11 @@ dumpy loghandle logchan = do
    hPutStrLn loghandle line
    dumpy loghandle logchan
 
+stopOnIOException :: IOException -> IO String
+stopOnIOException e = exitWith ExitSuccess
+
 bouncy handle logchan = do
-   line <- catch (hGetLine handle) (\_ -> exitWith ExitSuccess)
+   line <- catch (hGetLine handle) stopOnIOException
    if "ping " `isPrefixOf` (map toLower line)
       then do
          hPutStrLn handle $ "PONG " ++ (drop 5 line)
@@ -41,7 +45,7 @@ bouncy handle logchan = do
          bouncy handle logchan
 
 runaround handle logchan = do
-   line <- catch (hGetLine stdin) (\_ -> exitWith ExitSuccess)
+   line <- catch (hGetLine stdin) stopOnIOException
    hPutStrLn handle line
    writeChan logchan line
    runaround handle logchan
