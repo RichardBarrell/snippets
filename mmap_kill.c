@@ -59,6 +59,10 @@ static int be_parent(pid_t child)
 int main()
 {
 	pid_t child = fork();
+	if (child < 0) {
+		printf("oh no, can't fork()\n");
+		return 1;
+	}
 	if (child == 0) {
 		return be_child();
 	} else {
