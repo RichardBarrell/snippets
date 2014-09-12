@@ -360,10 +360,8 @@ int main(int argc, char **argv)
 			for (i = 0; i < nr_programs; i++) {
 				if (terminated_pid == children[i]) {
 					size_t last = nr_programs - 1;
-					if (i != last) {
-						children[i] = children[last];
-						nr_programs--;
-					}
+					children[i] = children[last];
+					nr_programs--;
 					break;
 				}
 			}
