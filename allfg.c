@@ -172,7 +172,7 @@ static void parse_supervisor(char *line_start, char *line_end, void *v)
 			;
 		if (c == line_end)
 			return;
-		if (memcmp(kind_start, "program:", c - kind_start) == 0) {
+		if (same_word("program:", kind_start, c + 1)) {
 			s->in_program_section = 1;
 			s->specs_used++;
 			if (s->specs_used > s->specs_alloc) {
