@@ -230,7 +230,7 @@ int main(int argc, char **argv)
 		       "Runs every process in a supervisor.conf file.\n"
 		       "Defaults to reading %s.\n",
 		       argv[0], DEFAULT_CONFIG_FILE_NAME);
-		exit(1);
+		return 1;
 	}
 	char *config_file_name = DEFAULT_CONFIG_FILE_NAME;
 	if (argc == 2)
@@ -248,7 +248,7 @@ int main(int argc, char **argv)
 	if (open_config_file(config_file_name, &config_fd, &config_text,
 	                     &config_text_sz)) {
 		CRY("Can't open config file %s.", config_file_name);
-		exit(1);
+		return 1;
 	}
 	config_text_end = config_text + config_text_sz;
 
@@ -269,7 +269,7 @@ int main(int argc, char **argv)
 		if (p->cmd == NULL) {
 			CRY("Won't be able to run program with missing "
 			    "command.\n");
-			exit(1);
+			return 1;
 		}
 	}
 
@@ -312,7 +312,7 @@ int main(int argc, char **argv)
 				dir_nulled[PSLEN(p, dir)] = '\0';
 				if (chdir(dir_nulled)) {
 					CRY("Can't chdir to %s.\n", dir_nulled);
-					exit(1);
+					return 1;
 				}
 			}
 
@@ -324,7 +324,7 @@ int main(int argc, char **argv)
 
 			if (execlp("sh", "sh", "-c", cmd_nulled, NULL)) {
 				CRY("Can't exec sh -c %s\n", cmd_nulled);
-				exit(1);
+				return 1;
 			}
 			DOOMED(); // can't get here
 		} else {
