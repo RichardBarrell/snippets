@@ -41,6 +41,7 @@ feel like one process, except for heating up your laptop more.
 #include <errno.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdbool.h>
 
 #ifndef DEFAULT_CONFIG_FILE_NAME
 #define DEFAULT_CONFIG_FILE_NAME "parts/supervisor/supervisord.conf"
@@ -125,6 +126,7 @@ struct program_spec
 	char *cmd, *cmd_end;
 	char *name, *name_end;
 	char *dir, *dir_end;
+	bool noautostart;
 };
 
 struct program_spec_state
@@ -182,6 +184,7 @@ static void parse_supervisor(char *line_start, char *line_end, void *v)
 			p->cmd = p->cmd_end = NULL;
 			p->name = p->name_end = NULL;
 			p->dir = p->dir_end = NULL;
+			p->noautostart = false;
 		} else {
 			s->in_program_section = 0;
 		}
@@ -221,6 +224,9 @@ static void parse_supervisor(char *line_start, char *line_end, void *v)
 		program->dir = value_start;
 		program->dir_end = value_end;
 	}
+	if (same_word("autostart", key_start, key_end)) {
+		program->noautostart = same_word("false", value_start, value_end);
+	}
 }
 
 int main(int argc, char **argv)
@@ -257,11 +263,28 @@ int main(int argc, char **argv)
 	parse_lines(config_text, config_text_end, parse_supervisor,
 	            &specs_state);
 
-	struct program_spec *specs = specs_state.specs;
-	size_t nr_programs = specs_state.specs_used;
+	size_t i, j;
+	struct program_spec *parsed_specs = specs_state.specs;
+	size_t nr_programs = 0;
+	for (i=0; i<specs_state.specs_used; i++) {
+		if (!parsed_specs[i].noautostart) {
+			nr_programs++;
+		}
+	}
+	struct program_spec *specs = malloc(nr_programs * sizeof specs[0]);
+	if (specs == NULL)
+		DOOMED();
+	for (i=0, j=0; i<specs_state.specs_used; i++) {
+		if (parsed_specs[i].noautostart) {
+			continue;
+		}
+		memcpy(specs + j, parsed_specs + i, sizeof specs[0]);
+		j++;
+	}
+	free(parsed_specs);
+	parsed_specs = 0;
 
 #define PSLEN(p, NAME) ((int)(p->NAME##_end - p->NAME))
-	size_t i;
 	struct program_spec *p;
 
 	for (i = 0; i < nr_programs; i++) {
