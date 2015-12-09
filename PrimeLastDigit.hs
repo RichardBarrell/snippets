@@ -10,7 +10,7 @@ primes = 2 : [ c | c <- [3,5..], all (\p -> c `mod` p > 0) (takeWhile (\p -> p*p
 
 lastDigits = map (flip mod 10) primes
 
-czero :: (Int, Int, Int, Int, Int, Int, Int, Int, Int, Int) 
+czero :: (Int, Int, Int, Int, Int, Int, Int, Int, Int, Int)
 czero = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 count 0 (c0, c1, c2, c3, c4, c5, c6, c7, c8, c9) = (1 + c0, c1, c2, c3, c4, c5, c6, c7, c8, c9)
 count 1 (c0, c1, c2, c3, c4, c5, c6, c7, c8, c9) = (c0, 1 + c1, c2, c3, c4, c5, c6, c7, c8, c9)
