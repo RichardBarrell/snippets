@@ -25,7 +25,11 @@ page_log(gl);
 var triangle_verts = new Float32Array([
         +0.0, +0.8, +0.2,
         -0.8, -0.8, +0.5,
-        +0.8, -0.8, +0.0])
+        +0.8, -0.8, +0.0,
+        +0.0, +0.8, +0.2,
+        +0.7, +0.7, +1.0,
+        +0.8, -0.8, +0.0,
+])
 
 // the "2" in the name "coord2d" is kind of a lie
 // I stuck a 3rd coordinate on the end which I'm using for greenness
@@ -82,7 +86,7 @@ gl.vertexAttribPointer(
     gl.FALSE,
     0,
     0);
-gl.drawArrays(gl.TRIANGLES, 0, 3);
+gl.drawArrays(gl.TRIANGLES, 0, 6);
 gl.disableVertexAttribArray(coord2d_loc);
 
 page_log("displayed");
