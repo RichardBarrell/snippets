@@ -1,0 +1,31 @@
+<html><head><meta charset="utf-8"/><title>Whee</title>
+<style type="text/css">
+.small-column {
+	width: 400px;
+	margin: 40px auto;
+	padding: 0;
+	background: 
+}
+p {
+	font-family: 'DejaVu Sans', sans-serif;
+	font-size: 18px;
+	font-weight: 300;
+	line-height: 1.1;
+}
+em {
+	font-size: 18px;
+}
+b {
+	vertical-align: baseline;
+}
+</style></head><body>
+<div class="small-column">
+<p>No, it’s not the same. It’s a compromise between the two extremes.</p>
+<p>You get to skip the headaches of having to manage redundant power, fibre connectivity, most of the green-ness concerns, though you still need to do due diligence to assure yourself that the people running the DC are doing all those things to a standard which is acceptable for your use case.</p>
+<p>You get to keep the cost savings from buying machines up front (and amortising the capex) instead of renting them — this is AFAIK where <em>most</em> of the <b>opex</b> savings come from going when switching from AWS to anything else. (Do price this up against <em>reserved</em> cloud VMs rather than against <em>on-demand</em> cloud VMs though, because you’re committing quite hard when you buy servers up front.</p>
+<p>You will pay more for electricity, space, physical management and connectivity than the raw price of running a DC, because of course the company running the DC wants to make a profit. Note that a big DC selling colocation to a whole bunch of customers is going to be able to get way better economies of scale on some things that are really expensive, (such as the person-time required to keep multiple actually-redundant internet connections in the face of telcos merging lines without telling you,) which might offset the cost of their profit margin until your need for machines gets gargantuan.</p>
+<p>You will have to manage physical machines yourself, including managing the risk that an actual physical machine has an actual physical fault and dies. This can be “fun”; there are good and bad ways to find out what the lead time is for Dell/HP/etc to assemble and ship a new box to a colo (IME, most of a month), try to do it one of the good ways. 😸</p>
+<blockquote><p>I was always under the impression one rented out some space and got some power outlets and network connections and everything else was managed by the DC owners.</p></blockquote>
+<p>Yes, that’s what colocation facilities offer. You’ll have to manage what the machines actually <em>do</em> by yourself. Usually a KVM-over-IP switch too for maintenance tasks. The colo will also provide basic services like “stick a Ubuntu 16.04 DVD in the drive and push the ‘on’ button for you so you can run the installer for that via the KVM”.</p>
+</div>
+</body></html>
