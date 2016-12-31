@@ -33,28 +33,28 @@ var triangle_verts = new Float32Array([
 
 // the "2" in the name "coord2d" is kind of a lie
 // I stuck a 3rd coordinate on the end which I'm using for greenness
-var v_shader_text = [
-    "attribute vec3 coord2d;",
-    "varying float greenness;",
-    "void main(void) {",
-    " gl_Position = vec4(coord2d[0], coord2d[1], 0.0, 1.0);",
-    " greenness = coord2d[2];",
-    "}"].join("\n");
+var v_shader_text = `
+attribute vec3 coord2d;
+varying float greenness;
+void main(void) {
+ gl_Position = vec4(coord2d[0], coord2d[1], 0.0, 1.0);
+ greenness = coord2d[2];
+}`;
 
 var v_s = gl.createShader(gl.VERTEX_SHADER);
 gl.shaderSource(v_s, v_shader_text);
 gl.compileShader(v_s)
 page_log(gl.getShaderInfoLog(v_s));
 
-var f_shader_text = [
-    "precision mediump float;",
-    "varying float greenness;",
-    "void main(void) {",
-    " gl_FragColor[0] = gl_FragCoord.x / 320.0;",
-    " gl_FragColor[1] = greenness;",
-    " gl_FragColor[2] = gl_FragCoord.y / 240.0;",
-    " gl_FragColor[3] = 1.0;",
-    "}"].join("\n");
+var f_shader_text = `
+precision mediump float;
+varying float greenness;
+void main(void) {
+ gl_FragColor[0] = gl_FragCoord.x / 320.0;
+ gl_FragColor[1] = greenness;
+ gl_FragColor[2] = gl_FragCoord.y / 240.0;
+ gl_FragColor[3] = 1.0;
+}`;
 
 var f_s = gl.createShader(gl.FRAGMENT_SHADER);
 gl.shaderSource(f_s, f_shader_text);
