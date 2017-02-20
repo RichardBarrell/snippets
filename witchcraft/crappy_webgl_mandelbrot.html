@@ -134,7 +134,7 @@ function redisplay() {
      0);
  gl.drawArrays(gl.TRIANGLES, 0, 6);
  gl.disableVertexAttribArray(coord2d_loc);
- page_log("displayed");
+ page_log("displayed " + String(canvas.width) + "x" + String(canvas.height));
 }
 
 redisplay();
