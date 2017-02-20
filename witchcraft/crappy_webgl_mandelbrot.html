@@ -140,12 +140,10 @@ function redisplay() {
 redisplay();
 
 function resizeCanvas(event) {
- event.preventDefault();
- canvas.width = event.clientX;
- canvas.height = event.clientY;
+ canvas.width = event.pageX;
+ canvas.height = event.pageY;
  redisplay();
 }
-document.body.addEventListener("click", resizeCanvas, false);
-canvas.addEventListener("click", resizeCanvas, false);
+document.addEventListener("click", resizeCanvas, true);
 // -->
 </script></body></html>
