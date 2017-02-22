@@ -57,10 +57,8 @@ var fill_quad = new Float32Array([
         1, 0
 ])
 
-// the "2" in the name "coord2d" is kind of a lie
-// I stuck a 3rd coordinate on the end which I'm using for greenness
 var v_shader_text = `
-attribute vec3 coord2d;
+attribute vec2 coord2d;
 varying vec2 uv;
 void main(void) {
  uv = (2.0 * coord2d.xy) - 1.0;
@@ -134,6 +132,7 @@ function redisplay() {
      0);
  gl.drawArrays(gl.TRIANGLES, 0, 6);
  gl.disableVertexAttribArray(coord2d_loc);
+ gl.deleteBuffer(vbo);
  page_log("displayed " + String(canvas.width) + "x" + String(canvas.height));
 }
 
