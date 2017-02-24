@@ -80,13 +80,13 @@ vec2 cmul(vec2 a, vec2 b) {
 void main(void) {
  vec2 a = vec2(2.0*uv.x, 2.0*uv.y);
  int mi = 0;
- for (int i = 0; i < 1024; i++) {
+ for (int i = 0; i < 64; i++) {
   mi = i;
   if (length(a) > 2.0) break;
   a = cmul(a, a) + c;
  }
  float m = float(mi);
- m = log(m) / log(1023.0);
+ m = log(m) / log(63.0);
  gl_FragColor[0] = 0.0;
  gl_FragColor[1] = m;
  gl_FragColor[2] = (m + uv.y * 0.3) / 1.3;
