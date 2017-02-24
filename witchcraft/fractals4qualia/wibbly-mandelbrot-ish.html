@@ -1,0 +1,249 @@
+<!doctype>
+<html><head><meta charset="UTF-8" />
+<title>I'd like to make 'pong'.</title>
+<style type="text/css">
+  body { background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAAAAAA6mKC9AAAA9ElEQVQYGQ3BzS4DYRQG4HPe883o9CfxUZWxKbWw6YaFhbtyLS6Crb21jcQGSSPRJjQZqn9Gp2rMnKPPw+8QEV5+BvhpVvR+7GytnKdbVcWozm81x8zlVOOgtCgfvsbHAKx/qaFqoZX+dR7ACT9dXXzpWnobd5wTVrc7W0ZquvBnDYLI38Z5t2KqVsTdOgAdbZ4c9n6Jisl+JIAVEx91pyMlXTQcCLZK9njbP0/oO22LGfLBDko5Cl/mg4Mq2LD68KQWdR4ey6YjMqSZNzPycW/YErAhaQVkjLCT3E0dq7paMyAwEJ5mNZCZk5AZguxm3PZixv8pPXcdlcC16gAAAABJRU5ErkJggg==); }
+  #fractal-controls { background: white; float: right; margin: 5px; padding: 5px; }
+  body { margin: 0; padding: 0; }
+ .control label { display: inline-block; margin: 3px 5px; }
+ .control input { float: right; margin: 0 5px; }
+ .control button { display: block; margin: 1px 5px 3px auto; }
+ .control { width: 100%; border: 1px solid pink; padding: 2px; }
+ .control:after { content: ""; clear: both; }
+</style>
+</head><body>
+
+<canvas id="gl">
+ Apparently there is no &lt;canvas&gt;.
+</canvas>
+
+<div id="fractal-controls">
+    <div class="control">
+        <button id="change-canvas-size">Change size</button>
+    </div>
+    <div class="control">
+        <button id="toggle-anim">Toggle animation</button>
+    </div>
+    <div class="control">
+        <label for="fractal-wibbly">Wibbliness:</label>
+        <input type="range" id="fractal-wibbly" min="0" max="100" value="30" />
+    </div>
+    <div class="control">
+        <label for="fractal-zoom">Zoom:</label>
+        <input type="range" id="fractal-zoom" min="1" max="100" value="10" />
+    </div>
+    <div class="control">
+        <label for="fractal-xoff">Horizontal offset:</label>
+        <input type="range" id="fractal-xoff" min="-100" max="100" value="0" />
+    </div>
+    <div class="control">
+        <label for="fractal-yoff">Vertical offset:</label>
+        <input type="range" id="fractal-yoff" min="-100" max="100" value="0" />
+    </div>
+    <div class="control">
+        <label for="fractal-speed">Speed:</label>
+        <input type="range" id="fractal-speed" min="1" max="100" value="50" />
+    </div>
+    <div>
+        <p>Smooth avg=<span id="frame-avg">?</span>ms.</p>
+        <p>Smooth dev≅<span id="frame-dev">?</span>ms.</p>
+        <p>Instant time=<span id="frame-instant">?</span>ms.</p>
+    </div>
+    <ul id="messages"></ul>
+</div>
+
+<script type="text/javascript">
+// <!--
+var messages = document.getElementById("messages");
+var t0 = Date.now();
+function page_log(message) {
+    var t = Date.now();
+    var li = document.createElement("li");
+    message = String(message);
+    message = String(t - t0) + "ms " + message;
+    li.appendChild(document.createTextNode(String(message)));
+    messages.appendChild(li);
+    t0 = t;
+}
+
+var canvas = document.getElementById("gl");
+canvas.width = 480;
+canvas.height = 360;
+page_log(canvas);
+
+var gl = canvas.getContext("webgl", {
+    failIfMajorPerformanceCaveat: true,
+    antialias: false,
+    alpha: false,
+    depth: false,
+    stencil: false});
+page_log(gl);
+
+var fill_quad = new Float32Array([
+        0, 0,
+        0, 1,
+        1, 1,
+        0, 0,
+        1, 1,
+        1, 0
+])
+
+var v_shader_text = `
+attribute vec2 coord2d;
+varying vec2 uv;
+uniform float time;
+varying vec2 circle;
+void main(void) {
+ uv = (2.0 * coord2d.xy) - 1.0;
+ gl_Position = vec4(uv, 0.0, 1.0);
+ circle = vec2(sin(time), cos(time));
+}`;
+
+var v_s = gl.createShader(gl.VERTEX_SHADER);
+gl.shaderSource(v_s, v_shader_text);
+gl.compileShader(v_s)
+page_log("v: " + gl.getShaderInfoLog(v_s));
+
+var f_shader_text = `
+precision mediump float;
+varying vec2 circle;
+varying vec2 uv;
+uniform float wibbly;
+uniform float zoom;
+uniform float xoff;
+uniform float yoff;
+
+vec2 cmul(vec2 a, vec2 b) {
+ return vec2(
+   a.x * a.x - b.y * b.y,
+   a.x * b.y + a.y * b.x);
+}
+
+void main(void) {
+ vec2 a = wibbly * circle / 100.0;
+ vec2 c = (10.0 / zoom) * vec2(uv.x - 0.5, uv.y);
+ c.x += xoff / 50.0;
+ c.y -= yoff / 50.0;
+ // vec2 c = 0.8 * circle;
+ // vec2 a = vec2(2.0*uv.x, 2.0*uv.y);
+ for (int i = 0; i < 16; i++) {
+  a = cmul(a, a) + c;
+  if (length(a) > 4.0) break;
+ }
+ float m = length(a);
+ m = 1.0 - pow(m / 16.0, 0.2);
+ gl_FragColor[0] = 0.0;
+ gl_FragColor[1] = m;
+ gl_FragColor[2] = (m + uv.y * 0.3) / 1.3;
+ gl_FragColor[3] = 1.0;
+}`;
+
+var f_s = gl.createShader(gl.FRAGMENT_SHADER);
+gl.shaderSource(f_s, f_shader_text);
+gl.compileShader(f_s)
+page_log("f: " + gl.getShaderInfoLog(f_s));
+
+var prog = gl.createProgram();
+gl.attachShader(prog, v_s);
+gl.attachShader(prog, f_s);
+gl.linkProgram(prog);
+
+page_log("p: " + gl.getProgramInfoLog(prog));
+
+page_log("compiled");
+
+var vbo = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+gl.bufferData(gl.ARRAY_BUFFER, fill_quad, gl.STATIC_DRAW);
+var coord2d_loc = gl.getAttribLocation(prog, "coord2d");
+
+var anim_t0 = Date.now();
+var animated = true;
+var anim_timeout = null;
+
+var input_wibbly = document.getElementById("fractal-wibbly");
+var input_speed = document.getElementById("fractal-speed");
+var input_zoom = document.getElementById("fractal-zoom");
+var input_xoff = document.getElementById("fractal-xoff");
+var input_yoff = document.getElementById("fractal-yoff");
+
+input_speed.addEventListener("change", function () { anim_t0 = Date.now(); }, false);
+input_speed.addEventListener("input", function () { anim_t0 = Date.now(); }, false);
+
+function redisplay() {
+ var draw_start = performance.now();
+ var t = 1.0e-3 * (anim_t0 - Date.now()) * (parseFloat(input_speed.value) / 50.0);
+ gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+ gl.clearColor(0.5, 1.0, 1.0, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT);
+ gl.useProgram(prog);
+ gl.uniform1f(gl.getUniformLocation(prog, "time"), t);
+ gl.uniform1f(gl.getUniformLocation(prog, "wibbly"), parseFloat(input_wibbly.value));
+ gl.uniform1f(gl.getUniformLocation(prog, "zoom"), parseFloat(input_zoom.value));
+ gl.uniform1f(gl.getUniformLocation(prog, "xoff"), parseFloat(input_xoff.value));
+ gl.uniform1f(gl.getUniformLocation(prog, "yoff"), parseFloat(input_yoff.value));
+ gl.enableVertexAttribArray(coord2d_loc);
+ gl.vertexAttribPointer(
+     coord2d_loc,
+     2,
+     gl.FLOAT,
+     gl.FALSE,
+     0,
+     0);
+ gl.drawArrays(gl.TRIANGLES, 0, 6);
+ gl.disableVertexAttribArray(coord2d_loc);
+ if (animated) {
+  anim_timeout = window.requestAnimationFrame(redisplay);
+ }
+ var draw_end = performance.now();
+ var draw_time = draw_end - draw_start;
+ update_frame_time_counter(draw_time);
+}
+
+var moving_avg = 0.0;
+var moving_dev = 0.0;
+var avg_span = document.getElementById("frame-avg");
+var dev_span = document.getElementById("frame-dev");
+var instant_span = document.getElementById("frame-instant");
+function update_frame_time_counter(draw_time) {
+ moving_avg = moving_avg * 0.98 + draw_time * 0.02;
+ moving_dev = moving_dev * 0.98 + Math.abs(moving_avg - draw_time) * 0.02;
+ avg_span.textContent = moving_avg.toFixed(2);
+ dev_span.textContent = moving_dev.toFixed(2);
+ instant_span.textContent = draw_time.toFixed(2);
+}
+
+
+redisplay();
+
+var toggle_anim_button = document.getElementById("toggle-anim");
+var change_canvas_size_button = document.getElementById("change-canvas-size");
+function changeCanvasSize(event) {
+ change_canvas_size_button.textContent = "Now click anywhere to resize canvas";
+ document.addEventListener("click", resizeCanvas, true);
+}
+function resizeCanvas(event) {
+ event.preventDefault();
+ canvas.width = event.pageX;
+ canvas.height = event.pageY;
+ change_canvas_size_button.textContent = "Change size";
+ if (!animated) {
+  redisplay();
+ }
+ document.removeEventListener("click", resizeCanvas, true);
+}
+function toggleAnim(event) {
+ if (anim_timeout) {
+  window.cancelAnimationFrame(anim_timeout);
+  anim_timeout = null;
+ }
+ animated = !animated;
+ if (animated) {
+  redisplay();
+ }
+}
+
+toggle_anim_button.addEventListener("click", toggleAnim, false);
+change_canvas_size_button.addEventListener("click", changeCanvasSize, false);
+// -->
+</script></body></html>
