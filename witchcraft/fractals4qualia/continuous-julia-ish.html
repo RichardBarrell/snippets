@@ -1,0 +1,165 @@
+<!doctype>
+<html><head><meta charset="UTF-8" />
+<!-- <meta http-equiv="refresh" content="1" /> -->
+<title>I'd like to make 'pong'.</title>
+<style type="text/css">
+  body { background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAAAAAA6mKC9AAAA9ElEQVQYGQ3BzS4DYRQG4HPe883o9CfxUZWxKbWw6YaFhbtyLS6Crb21jcQGSSPRJjQZqn9Gp2rMnKPPw+8QEV5+BvhpVvR+7GytnKdbVcWozm81x8zlVOOgtCgfvsbHAKx/qaFqoZX+dR7ACT9dXXzpWnobd5wTVrc7W0ZquvBnDYLI38Z5t2KqVsTdOgAdbZ4c9n6Jisl+JIAVEx91pyMlXTQcCLZK9njbP0/oO22LGfLBDko5Cl/mg4Mq2LD68KQWdR4ey6YjMqSZNzPycW/YErAhaQVkjLCT3E0dq7paMyAwEJ5mNZCZk5AZguxm3PZixv8pPXcdlcC16gAAAABJRU5ErkJggg==); }
+  #messages { background: white; float: right; margin: 5px; padding: 10px 20px; }
+  body { margin: 0; padding: 0; }
+</style>
+</head><body>
+
+<canvas id="gl">
+ Apparently there is no &lt;canvas&gt;.
+</canvas>
+
+<button id="toggle-anim">Animate?</button>
+
+<ul id="messages">
+</ul>
+
+<script type="text/javascript">
+// <!--
+var messages = document.getElementById("messages");
+var t0 = Date.now();
+function page_log(message) {
+    var t = Date.now();
+    var li = document.createElement("li");
+    message = String(message);
+    message = String(t - t0) + "ms " + message;
+    li.appendChild(document.createTextNode(String(message)));
+    messages.appendChild(li);
+    t0 = t;
+}
+page_log("click anywhere to resize fractal");
+
+var canvas = document.getElementById("gl");
+canvas.width = 480;
+canvas.height = 360;
+page_log(canvas);
+
+var gl = canvas.getContext("webgl", {
+    failIfMajorPerformanceCaveat: true,
+    antialias: false,
+    alpha: false,
+    depth: false,
+    stencil: false});
+page_log(gl);
+
+var fill_quad = new Float32Array([
+        0, 0,
+        0, 1,
+        1, 1,
+        0, 0,
+        1, 1,
+        1, 0
+])
+
+var v_shader_text = `
+attribute vec2 coord2d;
+varying vec2 uv;
+void main(void) {
+ uv = (2.0 * coord2d.xy) - 1.0;
+ gl_Position = vec4(uv, 0.0, 1.0);
+}`;
+
+var v_s = gl.createShader(gl.VERTEX_SHADER);
+gl.shaderSource(v_s, v_shader_text);
+gl.compileShader(v_s)
+page_log("v: " + gl.getShaderInfoLog(v_s));
+
+var f_shader_text = `
+precision mediump float;
+uniform vec2 circle;
+varying vec2 uv;
+
+vec2 cmul(vec2 a, vec2 b) {
+ return vec2(
+   a.x * a.x - b.y * b.y,
+   a.x * b.y + a.y * b.x);
+}
+
+void main(void) {
+ vec2 c = 0.8 * circle;
+ vec2 a = vec2(2.0*uv.x, 2.0*uv.y);
+ for (int i = 0; i < 16; i++) {
+  a = cmul(a, a) + c;
+  if (length(a) > 4.0) break;
+ }
+ float m = length(a);
+ m = 1.0 - pow(m / 16.0, 0.2);
+ gl_FragColor[0] = 0.0;
+ gl_FragColor[1] = m;
+ gl_FragColor[2] = (m + uv.y * 0.3) / 1.3;
+ gl_FragColor[3] = 1.0;
+}`;
+
+var f_s = gl.createShader(gl.FRAGMENT_SHADER);
+gl.shaderSource(f_s, f_shader_text);
+gl.compileShader(f_s)
+page_log("f: " + gl.getShaderInfoLog(f_s));
+
+var prog = gl.createProgram();
+gl.attachShader(prog, v_s);
+gl.attachShader(prog, f_s);
+gl.linkProgram(prog);
+
+page_log("p: " + gl.getProgramInfoLog(prog));
+
+page_log("compiled");
+
+var vbo = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+gl.bufferData(gl.ARRAY_BUFFER, fill_quad, gl.STATIC_DRAW);
+var coord2d_loc = gl.getAttribLocation(prog, "coord2d");
+
+var anim_t0 = Date.now();
+var animated = false;
+var anim_timeout = null;
+
+function redisplay() {
+ var t = 1.0e-3 * (anim_t0 - Date.now());
+ t0 = Date.now();
+ gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+ gl.clearColor(0.5, 1.0, 1.0, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT);
+ gl.useProgram(prog);
+ gl.uniform2f(gl.getUniformLocation(prog, "circle"), Math.sin(t), Math.cos(t));
+ gl.enableVertexAttribArray(coord2d_loc);
+ gl.vertexAttribPointer(
+     coord2d_loc,
+     2,
+     gl.FLOAT,
+     gl.FALSE,
+     0,
+     0);
+ gl.drawArrays(gl.TRIANGLES, 0, 6);
+ gl.disableVertexAttribArray(coord2d_loc);
+ if (animated) {
+  anim_timeout = window.requestAnimationFrame(redisplay);
+ }
+}
+
+redisplay();
+
+function resizeCanvas(event) {
+ canvas.width = event.pageX;
+ canvas.height = event.pageY;
+ if (!animated) {
+  redisplay();
+ }
+}
+function toggleAnim(event) {
+ if (anim_timeout) {
+  window.cancelAnimationFrame(anim_timeout);
+  anim_timeout = null;
+ }
+ animated = !animated;
+ if (animated) {
+  redisplay();
+ }
+}
+document.addEventListener("click", resizeCanvas, true);
+document.getElementById("toggle-anim").addEventListener("click", toggleAnim, false);
+// -->
+</script></body></html>
