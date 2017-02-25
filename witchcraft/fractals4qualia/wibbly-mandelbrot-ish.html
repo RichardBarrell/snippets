@@ -29,6 +29,10 @@
         <input type="range" id="fractal-wibbly" min="0" max="100" value="30" />
     </div>
     <div class="control">
+        <label for="fractal-boat">Boatometer:</label>
+        <input type="range" id="fractal-boat" min="0" max="100" value="0" />
+    </div>
+    <div class="control">
         <label for="fractal-zoom">Zoom:</label>
         <input type="range" id="fractal-zoom" min="1" max="100" value="10" />
     </div>
@@ -112,6 +116,7 @@ uniform float wibbly;
 uniform float zoom;
 uniform float xoff;
 uniform float yoff;
+uniform float boat;
 
 vec2 cmul(vec2 a, vec2 b) {
  return vec2(
@@ -121,13 +126,14 @@ vec2 cmul(vec2 a, vec2 b) {
 
 void main(void) {
  vec2 a = wibbly * circle / 100.0;
- vec2 c = (10.0 / zoom) * vec2(uv.x - 0.5, uv.y);
+ vec2 c = (10.0 / zoom) * vec2(uv.x - 0.5, 0.0 - uv.y);
  c.x += xoff / 50.0;
- c.y -= yoff / 50.0;
+ c.y += yoff / 50.0;
  // vec2 c = 0.8 * circle;
  // vec2 a = vec2(2.0*uv.x, 2.0*uv.y);
  for (int i = 0; i < 16; i++) {
   a = cmul(a, a) + c;
+  a = vec2(mix(a.x, abs(a.x), boat), mix(a.y, abs(a.y), boat));
   if (length(a) > 4.0) break;
  }
  float m = length(a);
@@ -166,6 +172,7 @@ var input_speed = document.getElementById("fractal-speed");
 var input_zoom = document.getElementById("fractal-zoom");
 var input_xoff = document.getElementById("fractal-xoff");
 var input_yoff = document.getElementById("fractal-yoff");
+var input_boat = document.getElementById("fractal-boat");
 
 input_speed.addEventListener("change", function () { anim_t0 = Date.now(); }, false);
 input_speed.addEventListener("input", function () { anim_t0 = Date.now(); }, false);
@@ -182,6 +189,7 @@ function redisplay() {
  gl.uniform1f(gl.getUniformLocation(prog, "zoom"), parseFloat(input_zoom.value));
  gl.uniform1f(gl.getUniformLocation(prog, "xoff"), parseFloat(input_xoff.value));
  gl.uniform1f(gl.getUniformLocation(prog, "yoff"), parseFloat(input_yoff.value));
+ gl.uniform1f(gl.getUniformLocation(prog, "boat"), parseFloat(input_boat.value) / 100.0);
  gl.enableVertexAttribArray(coord2d_loc);
  gl.vertexAttribPointer(
      coord2d_loc,
