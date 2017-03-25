@@ -180,11 +180,6 @@ uniform sampler2D grid;
 void main(void) {
  vec4 look = texture2D(grid, st);
  float h = look.r;
- /*
- gl_FragColor[0] = look.r;
- gl_FragColor[1] = look.r;
- gl_FragColor[2] = look.r;
- */
  gl_FragColor[0] = 0.5 * (1.0 + sin(radians(h*180.0)));
  gl_FragColor[1] = 0.5 * (1.0 + sin(radians(h*180.0 + 120.0)));
  gl_FragColor[2] = 0.5 * (1.0 + sin(radians(h*180.0 + 240.0)));
