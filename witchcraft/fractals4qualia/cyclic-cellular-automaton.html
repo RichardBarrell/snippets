@@ -1,0 +1,383 @@
+<!doctype html>
+<html><head><meta charset="UTF-8" />
+<title>I'd like to make 'pong'.</title>
+<style type="text/css">
+  body { background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAAAAAA6mKC9AAAA9ElEQVQYGQ3BzS4DYRQG4HPe883o9CfxUZWxKbWw6YaFhbtyLS6Crb21jcQGSSPRJjQZqn9Gp2rMnKPPw+8QEV5+BvhpVvR+7GytnKdbVcWozm81x8zlVOOgtCgfvsbHAKx/qaFqoZX+dR7ACT9dXXzpWnobd5wTVrc7W0ZquvBnDYLI38Z5t2KqVsTdOgAdbZ4c9n6Jisl+JIAVEx91pyMlXTQcCLZK9njbP0/oO22LGfLBDko5Cl/mg4Mq2LD68KQWdR4ey6YjMqSZNzPycW/YErAhaQVkjLCT3E0dq7paMyAwEJ5mNZCZk5AZguxm3PZixv8pPXcdlcC16gAAAABJRU5ErkJggg==); }
+  #fractal-controls { background: white; float: right; margin: 5px; padding: 5px; }
+  body { margin: 0; padding: 0; }
+ .control label { display: inline-block; margin: 3px 5px; }
+ .control input { float: right; margin: 0 5px; }
+ .control button { display: block; margin: 1px 5px 3px auto; }
+ .control { width: 100%; border: 1px solid pink; padding: 2px; }
+ .control:after { content: ""; clear: both; }
+</style>
+</head><body>
+
+<canvas id="gl">
+ Apparently there is no &lt;canvas&gt;.
+</canvas>
+
+<div id="fractal-controls">
+    <div class="control">
+        <button id="change-canvas-size">Change size</button>
+    </div>
+    <div class="control">
+        <button id="toggle-anim">Toggle animation</button>
+    </div>
+    <div class="control">
+        <button id="reset-noise">Reset noise</button>
+    </div>
+    <div class="control">
+        <label for="nr-states">Number of states</label>
+        <input id="nr-states" type="number" min=1 max=255 step=1 value=8 />
+    </div>
+    <div class="control">
+        <label for="go-fast">Go fast?</label>
+        <input id="go-fast" type="checkbox" style="margin-top: 3px" />
+    </div>
+    <div>
+        <p>Smooth avg=<span id="frame-avg">?</span>ms.</p>
+        <p>Smooth dev≅<span id="frame-dev">?</span>ms.</p>
+        <p>Instant time=<span id="frame-instant">?</span>ms.</p>
+    </div>
+    <ul id="messages"></ul>
+</div>
+
+// <!-- <script type="text/javascript" src="webgl-debug.js"></script> -->
+<script type="text/javascript">
+// <!--
+var messages = document.getElementById("messages");
+var t0 = Date.now();
+function page_log(message) {
+    var t = Date.now();
+    var li = document.createElement("li");
+    message = String(message);
+    message = String(t - t0) + "ms " + message;
+    li.appendChild(document.createTextNode(String(message)));
+    messages.appendChild(li);
+    t0 = t;
+}
+
+function nextPOT(n) {
+    // http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
+    n = (n|0) - 1;
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+    n |= n >> 16;
+    return (n+1);
+}
+
+var nr_states_input = document.getElementById("nr-states");
+var canvas = document.getElementById("gl");
+canvas.width = 480;
+canvas.height = 360;
+page_log(canvas);
+
+var gl = canvas.getContext("webgl", {
+    failIfMajorPerformanceCaveat: true,
+    antialias: false,
+    alpha: false,
+    depth: false,
+    stencil: false});
+// gl = WebGLDebugUtils.makeDebugContext(gl);
+page_log(gl);
+
+var fill_quad = new Float32Array([
+        0, 0,
+        0, 1,
+        1, 1,
+        0, 0,
+        1, 1,
+        1, 0
+])
+
+var v_shader_text = `
+attribute vec2 coord2d;
+uniform vec2 texSize;
+uniform vec2 vptSize;
+
+varying vec2 st;
+varying vec2 dsdt;
+varying vec2 min_pixel;
+varying vec2 max_pixel;
+
+void main(void) {
+ min_pixel = 0.5 / texSize;
+ max_pixel = (vptSize - vec2(0.5)) / texSize;
+ dsdt = 1.0 / texSize;
+ st = coord2d.xy * vptSize / texSize;
+ vec2 uv = (2.0 * coord2d.xy) - 1.0;
+ gl_Position = vec4(uv, 0.0, 1.0);
+}`;
+
+var v_s = gl.createShader(gl.VERTEX_SHADER);
+gl.shaderSource(v_s, v_shader_text);
+gl.compileShader(v_s)
+page_log("v: " + gl.getShaderInfoLog(v_s));
+
+var cyclic_shader_text = `
+precision mediump float;
+varying vec2 st;
+varying vec2 dsdt;
+varying vec2 min_pixel;
+varying vec2 max_pixel;
+uniform sampler2D grid;
+uniform float states;
+
+float quantize(float x) {
+  return floor(x * (states + 1.0));
+}
+
+float neighbour(float xDir, float yDir) {
+  vec2 coord = vec2(st.x + dsdt.x*xDir, st.y + dsdt.y*yDir);
+  if (coord.x < min_pixel.x) { coord.x = max_pixel.x; }
+  if (coord.y < min_pixel.y) { coord.y = max_pixel.y; }
+  if (coord.x > max_pixel.x) { coord.x = min_pixel.x; }
+  if (coord.y > max_pixel.y) { coord.y = min_pixel.y; }
+  return quantize(texture2D(grid, coord).r);
+}
+
+void main(void) {
+ int increment = 0;
+ float me = neighbour(0.0, 0.0);
+ float next = me + 1.0;
+ if (next >= states) { next = 0.0; }
+ if (neighbour(-1.0,  0.0) == next) { increment = 1; }
+ if (neighbour( 0.0, -1.0) == next) { increment = 1; }
+ if (neighbour( 0.0, +1.0) == next) { increment = 1; }
+ if (neighbour(+1.0,  0.0) == next) { increment = 1; }
+ if (increment == 1) { me = next; }
+ gl_FragColor[0] = me / states;
+ gl_FragColor[1] = 0.0;
+ gl_FragColor[2] = 0.0;
+ gl_FragColor[3] = 1.0;
+}`;
+
+var cyclic_s = gl.createShader(gl.FRAGMENT_SHADER);
+gl.shaderSource(cyclic_s, cyclic_shader_text);
+gl.compileShader(cyclic_s)
+page_log("cyclic f: " + gl.getShaderInfoLog(cyclic_s));
+
+var cyclic_prog = gl.createProgram();
+gl.attachShader(cyclic_prog, v_s);
+gl.attachShader(cyclic_prog, cyclic_s);
+gl.linkProgram(cyclic_prog);
+
+page_log("cyclic_p: " + gl.getProgramInfoLog(cyclic_prog));
+var cyclic_coord2d_loc = gl.getAttribLocation(cyclic_prog, "coord2d");
+var cyclic_grid_loc = gl.getUniformLocation(cyclic_prog, "grid");
+var cyclic_texSize_loc = gl.getUniformLocation(cyclic_prog, "texSize");
+var cyclic_vptSize_loc = gl.getUniformLocation(cyclic_prog, "vptSize");
+var cyclic_states_loc = gl.getUniformLocation(cyclic_prog, "states");
+
+var colour_shader_text = `
+precision mediump float;
+varying vec2 st;
+uniform sampler2D grid;
+
+void main(void) {
+ vec4 look = texture2D(grid, st);
+ float h = look.r;
+ /*
+ gl_FragColor[0] = look.r;
+ gl_FragColor[1] = look.r;
+ gl_FragColor[2] = look.r;
+ */
+ gl_FragColor[0] = 0.5 * (1.0 + sin(radians(h*180.0)));
+ gl_FragColor[1] = 0.5 * (1.0 + sin(radians(h*180.0 + 120.0)));
+ gl_FragColor[2] = 0.5 * (1.0 + sin(radians(h*180.0 + 240.0)));
+ gl_FragColor[3] = 1.0;
+}`;
+
+var colour_s = gl.createShader(gl.FRAGMENT_SHADER);
+gl.shaderSource(colour_s, colour_shader_text);
+gl.compileShader(colour_s)
+page_log("colour f: " + gl.getShaderInfoLog(colour_s));
+
+var colour_prog = gl.createProgram();
+gl.attachShader(colour_prog, v_s);
+gl.attachShader(colour_prog, colour_s);
+gl.linkProgram(colour_prog);
+
+page_log("colour_p: " + gl.getProgramInfoLog(colour_prog));
+var colour_coord2d_loc = gl.getAttribLocation(colour_prog, "coord2d");
+var colour_grid_loc = gl.getUniformLocation(colour_prog, "grid");
+var colour_texSize_loc = gl.getUniformLocation(colour_prog, "texSize");
+var colour_vptSize_loc = gl.getUniformLocation(colour_prog, "vptSize");
+
+page_log("compiled");
+
+var vbo = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+gl.bufferData(gl.ARRAY_BUFFER, fill_quad, gl.STATIC_DRAW);
+
+var anim_t0 = Date.now();
+var animated = true;
+var go_really_fast = false;
+var anim_timeout = null;
+
+function createNewGrid(w, h) {
+ var grid = new Uint8Array(w * h * 4);
+ for (var i=0; i<grid.length; i+= 4) {
+  grid[i] = Math.floor(Math.random() * 256.0);
+  grid[i+1] = 0;
+  grid[i+2] = 0;
+  grid[i+3] = 255;
+ }
+ return grid;
+}
+
+var tex_width, tex_height, grid, grid_tex_old, grid_tex_new;
+function createTextures() {
+ if (grid_tex_old) { gl.deleteTexture(grid_tex_old); }
+ if (grid_tex_new) { gl.deleteTexture(grid_tex_new); }
+ tex_width = nextPOT(canvas.width);
+ tex_height = nextPOT(canvas.height);
+ grid = createNewGrid(tex_width, tex_height);
+ grid_tex_old = gl.createTexture();
+ grid_tex_new = gl.createTexture();
+ gl.bindTexture(gl.TEXTURE_2D, grid_tex_old);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+ gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, tex_width, tex_height, 0, gl.RGBA, gl.UNSIGNED_BYTE, grid);
+ gl.bindTexture(gl.TEXTURE_2D, grid_tex_new);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+ gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+ gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, tex_width, tex_height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); // alloc only, no content
+ gl.bindTexture(gl.TEXTURE_2D, null);
+}
+
+createTextures();
+var fbo = gl.createFramebuffer();
+
+function redisplay() {
+ var draw_start = performance.now();
+ var number_of_states = parseInt(nr_states_input.value, 10) || 3;
+ gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+ gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+ gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, grid_tex_new, 0);
+ gl.clearColor(0.0, 0.0, 0.0, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT);
+ gl.useProgram(cyclic_prog);
+ gl.activeTexture(gl.TEXTURE0);
+ gl.bindTexture(gl.TEXTURE_2D, grid_tex_old);
+ gl.uniform1i(cyclic_grid_loc, 0);
+ gl.uniform2f(cyclic_texSize_loc, tex_width, tex_height);
+ gl.uniform2f(cyclic_vptSize_loc, gl.canvas.width, gl.canvas.height);
+ gl.uniform1f(cyclic_states_loc, number_of_states);
+ gl.enableVertexAttribArray(cyclic_coord2d_loc);
+ gl.vertexAttribPointer(
+     cyclic_coord2d_loc,
+     2,
+     gl.FLOAT,
+     gl.FALSE,
+     0,
+     0);
+ gl.drawArrays(gl.TRIANGLES, 0, 6);
+ gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, null, 0);
+ var grid_tex_swap = grid_tex_old;
+ grid_tex_old = grid_tex_new;
+ grid_tex_new = grid_tex_swap;
+
+ gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+ gl.clearColor(0.5, 1.0, 1.0, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT);
+ gl.useProgram(colour_prog);
+ gl.activeTexture(gl.TEXTURE0);
+ gl.bindTexture(gl.TEXTURE_2D, grid_tex_old);
+ gl.uniform1i(colour_grid_loc, 0);
+ gl.uniform2f(colour_texSize_loc, tex_width, tex_height);
+ gl.uniform2f(colour_vptSize_loc, gl.canvas.width, gl.canvas.height);
+ gl.enableVertexAttribArray(colour_coord2d_loc);
+ gl.vertexAttribPointer(
+     colour_coord2d_loc,
+     2,
+     gl.FLOAT,
+     gl.FALSE,
+     0,
+     0);
+ gl.drawArrays(gl.TRIANGLES, 0, 6);
+ gl.bindTexture(gl.TEXTURE_2D, null);
+
+ gl.disableVertexAttribArray(colour_coord2d_loc);
+ if (animated) {
+  if (go_really_fast) {
+   anim_timeout = window.requestAnimationFrame(redisplay);
+  } else {
+   anim_timeout = window.setTimeout(redisplay, 180);
+  }
+ }
+ var draw_end = performance.now();
+ var draw_time = draw_end - draw_start;
+ update_frame_time_counter(draw_time);
+}
+
+var moving_avg = 0.0;
+var moving_dev = 0.0;
+var avg_span = document.getElementById("frame-avg");
+var dev_span = document.getElementById("frame-dev");
+var instant_span = document.getElementById("frame-instant");
+function update_frame_time_counter(draw_time) {
+ moving_avg = moving_avg * 0.98 + draw_time * 0.02;
+ moving_dev = moving_dev * 0.98 + Math.abs(moving_avg - draw_time) * 0.02;
+ avg_span.textContent = moving_avg.toFixed(2);
+ dev_span.textContent = moving_dev.toFixed(2);
+ instant_span.textContent = draw_time.toFixed(2);
+}
+
+redisplay();
+
+var toggle_anim_button = document.getElementById("toggle-anim");
+var change_canvas_size_button = document.getElementById("change-canvas-size");
+var reset_noise_button = document.getElementById("reset-noise");
+var go_fast_checkbox = document.getElementById("go-fast");
+function changeCanvasSize(event) {
+ change_canvas_size_button.textContent = "Now click anywhere to resize canvas";
+ document.addEventListener("click", resizeCanvas, true);
+}
+function resizeCanvas(event) {
+ event.preventDefault();
+ canvas.width = event.pageX;
+ canvas.height = event.pageY;
+ change_canvas_size_button.textContent = "Change size";
+ createTextures();
+ if (!animated) {
+  redisplay();
+ }
+ document.removeEventListener("click", resizeCanvas, true);
+}
+function toggleAnim(event) {
+ if (anim_timeout) {
+  if (go_really_fast) {
+   window.cancelAnimationFrame(anim_timeout);
+  } else {
+   window.clearTimeout(anim_timeout);
+  }
+  anim_timeout = null;
+ }
+ animated = !animated;
+ if (animated) {
+  redisplay();
+ }
+}
+function resetNoise(event) {
+ createTextures();
+ if (!animated) {
+  redisplay();
+ }
+}
+function set_speed(event) {
+ go_really_fast = go_fast_checkbox.checked;
+}
+
+go_fast_checkbox.addEventListener("change", set_speed, false);
+nr_states_input.addEventListener("change", resetNoise, false);
+nr_states_input.addEventListener("input", resetNoise, false);
+toggle_anim_button.addEventListener("click", toggleAnim, false);
+change_canvas_size_button.addEventListener("click", changeCanvasSize, false);
+reset_noise_button.addEventListener("click", resetNoise, false);
+// -->
+</script></body></html>
