@@ -29,7 +29,7 @@
     </div>
     <div class="control">
         <label for="nr-states">Number of states</label>
-        <input id="nr-states" type="number" min=1 max=255 step=1 value=8 />
+        <input id="nr-states" type="number" min=3 max=50 step=1 value=8 />
     </div>
     <div class="control">
         <label for="go-fast">Go fast?</label>
@@ -249,7 +249,10 @@ var fbo = gl.createFramebuffer();
 
 function redisplay() {
  var draw_start = performance.now();
- var number_of_states = parseInt(nr_states_input.value, 10) || 3;
+ var number_of_states = parseInt(nr_states_input.value, 10);
+ if (!((number_of_states >= 3) && (number_of_states <= 50))) {
+  number_of_states = 3;
+ }
  gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
