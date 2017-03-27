@@ -32,6 +32,10 @@
         <input id="nr-states" type="number" min=3 max=50 step=1 value=8 />
     </div>
     <div class="control">
+        <label for="tilt-diagonal">Diagonal rule?</label>
+        <input id="tilt-diagonal" type="checkbox" style="margin-top: 3px" />
+    </div>
+    <div class="control">
         <label for="go-fast">Go fast?</label>
         <input id="go-fast" type="checkbox" style="margin-top: 3px" />
     </div>
@@ -70,6 +74,7 @@ function nextPOT(n) {
 }
 
 var nr_states_input = document.getElementById("nr-states");
+var tilt_diagonal_input = document.getElementById("tilt-diagonal");
 var canvas = document.getElementById("gl");
 canvas.width = 480;
 canvas.height = 360;
@@ -125,6 +130,7 @@ varying vec2 min_pixel;
 varying vec2 max_pixel;
 uniform sampler2D grid;
 uniform float states;
+uniform vec2 tilt;
 
 float quantize(float x) {
   return floor(x * (states + 1.0));
@@ -144,10 +150,14 @@ void main(void) {
  float me = neighbour(0.0, 0.0);
  float next = me + 1.0;
  if (next >= states) { next = 0.0; }
- if (neighbour(-1.0,  0.0) == next) { increment = 1; }
- if (neighbour( 0.0, -1.0) == next) { increment = 1; }
- if (neighbour( 0.0, +1.0) == next) { increment = 1; }
- if (neighbour(+1.0,  0.0) == next) { increment = 1; }
+ vec2 c0 = tilt;
+ vec2 c1 = vec2(c0.y, -c0.x);
+ vec2 c2 = vec2(c1.y, -c1.x);
+ vec2 c3 = vec2(c2.y, -c2.x);
+ if (neighbour(c0.x, c0.y) == next) { increment = 1; }
+ if (neighbour(c1.x, c1.y) == next) { increment = 1; }
+ if (neighbour(c2.x, c2.y) == next) { increment = 1; }
+ if (neighbour(c3.x, c3.y) == next) { increment = 1; }
  if (increment == 1) { me = next; }
  gl_FragColor[0] = me / states;
  gl_FragColor[1] = 0.0;
@@ -171,6 +181,7 @@ var cyclic_grid_loc = gl.getUniformLocation(cyclic_prog, "grid");
 var cyclic_texSize_loc = gl.getUniformLocation(cyclic_prog, "texSize");
 var cyclic_vptSize_loc = gl.getUniformLocation(cyclic_prog, "vptSize");
 var cyclic_states_loc = gl.getUniformLocation(cyclic_prog, "states");
+var cyclic_tilt_loc =  gl.getUniformLocation(cyclic_prog, "tilt");
 
 var colour_shader_text = `
 precision mediump float;
@@ -249,6 +260,7 @@ var fbo = gl.createFramebuffer();
 
 function redisplay() {
  var draw_start = performance.now();
+ var tilt_y = tilt_diagonal_input.checked ? 1.0 : 0.0;
  var number_of_states = parseInt(nr_states_input.value, 10);
  if (!((number_of_states >= 3) && (number_of_states <= 50))) {
   number_of_states = 3;
@@ -266,6 +278,7 @@ function redisplay() {
  gl.uniform2f(cyclic_texSize_loc, tex_width, tex_height);
  gl.uniform2f(cyclic_vptSize_loc, gl.canvas.width, gl.canvas.height);
  gl.uniform1f(cyclic_states_loc, number_of_states);
+ gl.uniform2f(cyclic_tilt_loc, 1.0, tilt_y);
  gl.enableVertexAttribArray(cyclic_coord2d_loc);
  gl.vertexAttribPointer(
      cyclic_coord2d_loc,
