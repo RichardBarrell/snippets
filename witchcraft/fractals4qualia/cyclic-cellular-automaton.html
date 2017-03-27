@@ -221,6 +221,7 @@ gl.bufferData(gl.ARRAY_BUFFER, fill_quad, gl.STATIC_DRAW);
 
 var anim_t0 = Date.now();
 var animated = true;
+// Initial value doesn't matter, will be wiped out during redisplay.
 var go_really_fast = false;
 var anim_timeout = null;
 
@@ -262,6 +263,7 @@ function redisplay() {
  var draw_start = performance.now();
  var tilt_y = tilt_diagonal_input.checked ? 1.0 : 0.0;
  var number_of_states = parseInt(nr_states_input.value, 10);
+ go_really_fast = go_fast_checkbox.checked;
  if (!((number_of_states >= 3) && (number_of_states <= 50))) {
   number_of_states = 3;
  }
@@ -380,11 +382,7 @@ function resetNoise(event) {
   redisplay();
  }
 }
-function set_speed(event) {
- go_really_fast = go_fast_checkbox.checked;
-}
 
-go_fast_checkbox.addEventListener("change", set_speed, false);
 nr_states_input.addEventListener("change", resetNoise, false);
 nr_states_input.addEventListener("input", resetNoise, false);
 toggle_anim_button.addEventListener("click", toggleAnim, false);
