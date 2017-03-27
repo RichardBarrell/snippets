@@ -75,6 +75,7 @@ function nextPOT(n) {
 
 var nr_states_input = document.getElementById("nr-states");
 var tilt_diagonal_input = document.getElementById("tilt-diagonal");
+var go_fast_checkbox = document.getElementById("go-fast");
 var canvas = document.getElementById("gl");
 canvas.width = 480;
 canvas.height = 360;
@@ -346,7 +347,6 @@ redisplay();
 var toggle_anim_button = document.getElementById("toggle-anim");
 var change_canvas_size_button = document.getElementById("change-canvas-size");
 var reset_noise_button = document.getElementById("reset-noise");
-var go_fast_checkbox = document.getElementById("go-fast");
 function changeCanvasSize(event) {
  change_canvas_size_button.textContent = "Now click anywhere to resize canvas";
  document.addEventListener("click", resizeCanvas, true);
