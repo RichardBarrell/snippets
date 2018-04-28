@@ -1,0 +1,210 @@
+<!doctype html>
+<html><head><meta charset="UTF-8" />
+<!-- <meta http-equiv="refresh" content="1" /> -->
+<title>Thaderth</title>
+<style type="text/css">
+  body { background: silver; }
+  #messages { background: white; float: right; margin: 5px; padding: 10px 20px; }
+  body { margin: 0; padding: 0; }
+  #gridLabels {
+    table-layout: fixed;
+    border-collapse: collapse;
+  }
+  #gridLabels tr, #gridLabels td { border-spacing: 0; padding: 0; margin: 0; }
+  #gridLabels .box { height: 32px; width: 32px; }
+  #gridLabels tr { height: 32px; }
+  .glBox { position: relative; }
+  #gl {
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+  .control {
+      margin: 10px;
+  }
+</style>
+</head><body>
+
+<ul id="messages"></ul>
+
+<table id="gridLabels">
+    <tbody>
+        <tr>
+            <td class=box>&nbsp;</td>
+            <td class=box>_0</td>
+            <td class=box>_1</td>
+            <td class=box>_2</td>
+            <td class=box>_3</td>
+            <td class=box>_4</td>
+            <td class=box>_5</td>
+            <td class=box>_6</td>
+            <td class=box>_7</td>
+            <td class=box>_8</td>
+            <td class=box>_9</td>
+            <td class=box>_A</td>
+            <td class=box>_B</td>
+            <td class=box>_C</td>
+            <td class=box>_D</td>
+            <td class=box>_E</td>
+            <td class=box>_F</td>
+        </tr>
+        <tr>
+            <td class=box>0_</td>
+            <td rowspan=16 colspan=16 class=glBox>
+                <canvas id="gl" width=512 height=512>Whee</canvas>
+            </td>
+        </tr>
+        <tr><td class=box>1_</td></tr>
+        <tr><td class=box>2_</td></tr>
+        <tr><td class=box>3_</td></tr>
+        <tr><td class=box>4_</td></tr>
+        <tr><td class=box>5_</td></tr>
+        <tr><td class=box>6_</td></tr>
+        <tr><td class=box>7_</td></tr>
+        <tr><td class=box>8_</td></tr>
+        <tr><td class=box>9_</td></tr>
+        <tr><td class=box>A_</td></tr>
+        <tr><td class=box>B_</td></tr>
+        <tr><td class=box>C_</td></tr>
+        <tr><td class=box>D_</td></tr>
+        <tr><td class=box>E_</td></tr>
+        <tr><td class=box>F_</td></tr>
+    </tbody>
+</table>
+
+<div class=control>
+    <label for="threshold">Threshold:</label>
+    <input type=number value="0.0" step="0.00392156862745098" id="threshold" />
+</div>
+
+<div class=control>
+    <label for="multiplier">Multiplier:</label>
+    <input type=number value="1.0" id="multiplier" />
+</div>
+
+<script type="text/javascript">
+// <!--
+var messages = document.getElementById("messages");
+var t0 = Date.now();
+function page_log(message) {
+    var t = Date.now();
+    var li = document.createElement("li");
+    message = String(message);
+    message = String(t - t0) + "ms " + message;
+    li.appendChild(document.createTextNode(String(message)));
+    messages.appendChild(li);
+    t0 = t;
+}
+
+console.log("messages");
+var canvas = document.getElementById("gl");
+console.log("canvas");
+
+var threshold_input = document.getElementById("threshold");
+var multiplier_input = document.getElementById("multiplier");
+var gl = canvas.getContext("webgl", {
+    failIfMajorPerformanceCaveat: true,
+    antialias: false,
+    alpha: false,
+    depth: false,
+    stencil: false});
+console.log("gl");
+
+page_log(canvas);
+page_log(gl);
+
+const fill_quad = new Float32Array([
+    0, 0,
+    0, 1,
+    1, 0,
+    1, 1,
+]);
+
+var v_shader_text = `
+attribute vec2 coord2d;
+varying vec2 uv;
+void main(void) {
+ uv = (2.0 * coord2d.xy) - 1.0;
+ gl_Position = vec4(uv, 0.0, 1.0);
+}`;
+
+var v_s = gl.createShader(gl.VERTEX_SHADER);
+gl.shaderSource(v_s, v_shader_text);
+gl.compileShader(v_s)
+page_log("v: " + gl.getShaderInfoLog(v_s));
+
+var f_shader_text = `
+precision mediump float;
+varying vec2 uv;
+uniform float threshold;
+uniform float multiplier;
+uniform sampler2D grid;
+
+void main(void) {
+ vec2 where = vec2(1.0, -1.0) * (0.5 * uv + vec2(0.5));
+ vec4 lookup = texture2D(grid, where + vec2(1.0/32.0) - mod(where, 1.0/16.0));
+ float v = lookup.r * multiplier;
+ gl_FragColor[0] = lookup.r;
+ gl_FragColor[1] = v > threshold ? 0.5 : 0.0;
+ gl_FragColor[2] = v == threshold ? 1.0 : 0.0;
+ gl_FragColor[3] = 1.0;
+}`;
+
+var f_s = gl.createShader(gl.FRAGMENT_SHADER);
+gl.shaderSource(f_s, f_shader_text);
+gl.compileShader(f_s)
+page_log("f: " + gl.getShaderInfoLog(f_s));
+
+var prog = gl.createProgram();
+gl.attachShader(prog, v_s);
+gl.attachShader(prog, f_s);
+gl.linkProgram(prog);
+
+page_log("p: " + gl.getProgramInfoLog(prog));
+page_log("compiled");
+
+var gridPixels = new Uint8Array(256*4);
+for (var i=0; i<256; i++) {
+    gridPixels[i*4 + 0] = i;
+    gridPixels[i*4 + 1] = 0;
+    gridPixels[i*4 + 2] = 0;
+    gridPixels[i*4 + 3] = 0;
+}
+
+var grid = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, grid);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 16, 16, 0, gl.RGBA, gl.UNSIGNED_BYTE, gridPixels);
+page_log("grid");
+
+ var vbo = gl.createBuffer();
+ gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+ gl.bufferData(gl.ARRAY_BUFFER, fill_quad, gl.STATIC_DRAW);
+page_log("vbo");
+
+var coord2d_loc = gl.getAttribLocation(prog, "coord2d");
+var threshold_loc = gl.getUniformLocation(prog, "threshold");
+var multiplier_loc = gl.getUniformLocation(prog, "multiplier");
+
+ gl.useProgram(prog);
+ gl.enableVertexAttribArray(coord2d_loc);
+ gl.vertexAttribPointer(coord2d_loc, 2, gl.FLOAT, gl.FALSE, 0, 0);
+
+function redisplay() {
+ t0 = Date.now();
+ gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+ gl.clearColor(0, 0, 0, 1.0);
+ gl.clear(gl.COLOR_BUFFER_BIT);
+ gl.uniform1f(threshold_loc, parseFloat(threshold_input.value) || 0.0);
+ gl.uniform1f(multiplier_loc, parseFloat(multiplier_input.value) || 0.0);
+ gl.drawArrays(gl.TRIANGLE_STRIP, 0, fill_quad.length / 2);
+}
+
+redisplay();
+threshold_input.addEventListener('change', redisplay, false);
+threshold_input.addEventListener('input', redisplay, false);
+multiplier_input.addEventListener('change', redisplay, false);
+multiplier_input.addEventListener('input', redisplay, false);
+// -->
+</script></body></html>
