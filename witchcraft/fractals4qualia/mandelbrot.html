@@ -51,10 +51,8 @@ page_log(gl);
 var fill_quad = new Float32Array([
         0, 0,
         0, 1,
+        1, 0,
         1, 1,
-        0, 0,
-        1, 1,
-        1, 0
 ])
 
 var v_shader_text = `
@@ -130,7 +128,7 @@ function redisplay() {
      gl.FALSE,
      0,
      0);
- gl.drawArrays(gl.TRIANGLES, 0, 6);
+ gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
  gl.disableVertexAttribArray(coord2d_loc);
  gl.deleteBuffer(vbo);
  page_log("displayed " + String(canvas.width) + "x" + String(canvas.height));

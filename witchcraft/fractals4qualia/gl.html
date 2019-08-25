@@ -1,0 +1,65 @@
+<!doctype html>
+<html><head><meta charset="UTF-8" />
+<title>Various fractals</title>
+<style type="text/css">
+ #fractal-controls {
+     background: white;
+     margin: 0;
+     padding: 0;
+     position: fixed;
+     top: 5px;
+     right: 50px;
+ }
+ body {
+     background-color: #bbb;
+     width: 100%;
+     height: 100%;
+     margin: 0;
+     padding: 0;
+ }
+ .control {
+     width: 100%;
+ }
+ #draw-on-me {
+     display: block;
+ }
+</style>
+<!-- <script type="text/javascript" src="webgl-debug.js"></script> -->
+</head><body><div id="fractal-controls">
+  <form id="standard-controls">
+    <div class="control">
+      <label for="which-fractal">Which fractal:</label>
+      <select id="which-fractal" name="which-fractal">
+        <option value="cca" selected>Cyclic cellular automaton</option>
+        <option value="mandelbrot">Mandelbröt (wibbly)</option>
+        <option value="julia">Julia (spinning)</option>
+      </select>
+    </div>
+    <div class="control">
+      <label for="speed-control">Running speed:</label>
+      <select id="speed-control" name="speed-control">
+        <option value="pause">Paused</option>
+        <option value="t8000" selected>8 seconds/tick</option>
+        <option value="t200">200 ms/tick</option>
+        <option value="t100">100 ms/tick</option>
+        <option value="t50">50 ms/tick</option>
+        <option value="f1">1 tick/frame</option>
+        <!-- <option value="f2">2 ticks/frame</option>
+             <option value="f5">5 ticks/frame</option> -->
+      </select>
+    </div>
+    <div class="control">
+      <label for="reset-state">Reset animation:</label>
+      <button id="reset-state">Reset!</button>
+    </div>
+  </form>
+  <form id="specific-controls">
+  </form>
+  <div>
+    <p>
+      Smooth avg=<span id="frame-avg">?</span>ms.<br />
+      Smooth dev≅<span id="frame-dev">?</span>ms.<br />
+      Instant time=<span id="frame-instant">?</span>ms.
+    </p>
+  </div>
+</div><script type="text/javascript" src="gl-main.js"></script></body></html>
