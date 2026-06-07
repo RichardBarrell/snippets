@@ -1,0 +1,21 @@
+h1 {
+  background-color: pink;
+}
+h2 {
+  background-color: yellowgreen;
+}
+#top {
+  view-transition-name: vtn-top;
+}
+#mid {
+  view-transition-name: vtn-mid;
+}
+/* :root {
+  view-transition-name: none;
+} */
+@view-transition {
+  navigation: auto;
+}
+#wehs p {
+  font-size: 2rem;
+}
