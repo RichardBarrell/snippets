@@ -12,3 +12,6 @@ out.ppm
 regprinting_illhandler_demo
 mandelbrot
 target
+*.hi
+*.o
+*.exe
