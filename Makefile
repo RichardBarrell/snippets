@@ -1,6 +1,6 @@
 CC=clang
 
-all: last_message spmc_lossy
+all: last_message spmc_lossy thread_tennis
 check-syntax: all
 
 last_message: last_message.c
@@ -9,6 +9,9 @@ last_message: last_message.c
 spmc_lossy: spmc_lossy.c
 	$(CC) spmc_lossy.c -o spmc_lossy -Os -g -Wall -Wextra -std=c99 -lpthread -Werror
 
+thread_tennis: thread_tennis.cpp
+	$(CXX) thread_tennis.cpp -o thread_tennis -Os -g -Wall -Wextra -lpthread -Werror
+
 .PHONY: clean
 clean:
-	rm -f last_message spmc_lossy
+	rm -f last_message spmc_lossy thread_tennis
